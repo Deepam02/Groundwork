@@ -1,0 +1,32 @@
+# Dependencies and compiled output
+node_modules/
+dist/
+*.tsbuildinfo
+
+# Local environment and secrets (keep the documented template)
+.env*
+!.env.example
+
+# Local Convex deployment and development artifacts
+.convex/
+.local/
+
+# Test output
+coverage/
+test-results/
+playwright-report/
+playwright/.cache/
+
+# Logs and tool caches
+*.log
+.eslintcache
+.vite/
+
+# Operating system and editor artifacts
+.DS_Store
+Thumbs.db
+Desktop.ini
+.idea/
+*.swp
+*.swo
+*~

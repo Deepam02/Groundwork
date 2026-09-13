@@ -1,0 +1,13 @@
+node_modules
+dist
+.agents
+.codex
+.convex
+.local
+convex/_generated
+package-lock.json
+test-results
+playwright-report
+vision.md
+AGENTS.md
+CLAUDE.md
