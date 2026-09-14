@@ -13,12 +13,14 @@ export function AuthDialog({
   open,
   onClose,
   onSuccess,
+  initialMode = 'signup',
 }: {
   open: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  initialMode?: 'signup' | 'signin';
 }) {
-  const [signup, setSignup] = useState(true);
+  const [signup, setSignup] = useState(initialMode === 'signup');
   const { isAuthenticated } = useConvexAuth();
   const [sessionReady, setSessionReady] = useState(false);
   const [username, setUsername] = useState('');

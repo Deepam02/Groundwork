@@ -1,8 +1,12 @@
 import { Link } from 'react-router-dom';
 
-export function Brand() {
+export function Brand({ to = '/' }: { to?: string }) {
   return (
-    <Link to="/" className="brand" aria-label="Groundwork home">
+    <Link
+      to={to}
+      className="brand"
+      aria-label={to === '/' ? 'Groundwork home' : 'Groundwork workspace'}
+    >
       <span className="brand-mark" aria-hidden="true">
         <i />
         <i />

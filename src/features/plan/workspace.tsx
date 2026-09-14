@@ -59,7 +59,7 @@ export function Workspace() {
   return (
     <main id="main" className="workspace section-width">
       <div className="workspace-breadcrumb">
-        <Link to="/">
+        <Link to="/workspace">
           <ArrowLeft size={14} /> All projects
         </Link>
         <span>/</span>

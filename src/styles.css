@@ -214,9 +214,13 @@ summary:focus-visible {
   color: white;
   padding: 12px;
   z-index: 100;
+  opacity: 0;
+  pointer-events: none;
 }
 .skip-link:focus {
   top: 12px;
+  opacity: 1;
+  pointer-events: auto;
 }
 .site-header {
   height: 91px;
@@ -416,7 +420,7 @@ summary:focus-visible {
   border-radius: 50%;
   top: 57px;
   left: 25px;
-  transform: rotate(-22deg);
+  transform: none;
 }
 .orbit-two {
   width: 325px;

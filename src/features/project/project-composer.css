@@ -1,0 +1,78 @@
+.composer-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 13px;
+}
+.project-composer .composer-heading label {
+  font-size: 14px;
+  margin: 0;
+}
+.composer-heading > span {
+  font-size: 10px;
+  color: #58684f;
+}
+.composer-quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-bottom: 16px;
+}
+.composer-quick-actions button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 9px;
+  border: 1px solid #e1e7d9;
+  border-radius: 5px;
+  font-size: 11px;
+  color: #465e3e;
+  background: #f6f8f1;
+  transition:
+    background 0.18s,
+    border-color 0.18s;
+}
+.composer-quick-actions button:hover {
+  background: #edf3e2;
+  border-color: #a4ba8c;
+}
+.project-composer textarea {
+  font-size: 14px;
+  min-height: 93px;
+  line-height: 1.8;
+}
+.project-composer textarea::placeholder {
+  color: #687464;
+}
+.composer-signin-note {
+  font-size: 11px;
+  line-height: 1.6;
+  color: #58684f;
+  margin-top: 12px;
+}
+@media (max-width: 520px) {
+  .composer-heading {
+    align-items: flex-start;
+  }
+  .composer-heading > span {
+    display: none;
+  }
+  .composer-quick-actions {
+    gap: 6px;
+  }
+  .composer-quick-actions button {
+    padding: 8px;
+    font-size: 10px;
+  }
+  .composer-quick-actions svg {
+    width: 13px;
+  }
+  .project-composer textarea {
+    font-size: 16px;
+    min-height: 122px;
+  }
+  .composer-signin-note {
+    font-size: 10px;
+  }
+}
