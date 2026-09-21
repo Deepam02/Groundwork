@@ -20,6 +20,11 @@ export function App() {
   const [authIntent, setAuthIntent] = useState<AuthIntent | null>(null);
   const [signingOut, setSigningOut] = useState(false);
   const [error, setError] = useState('');
+  // Keep the destination until navigation commits so the root redirect
+  // cannot replace a draft handoff with the default workspace route.
+  if (isAuthenticated && authIntent?.destination === location.pathname + location.search) {
+    setAuthIntent(null);
+  }
   const marketing = location.pathname === '/' && !isAuthenticated;
   function privatePage(children: ReactNode) {
     if (isLoading)
@@ -138,12 +143,12 @@ export function App() {
         <Route
           path="/"
           element={
-            isLoading ? (
+            isLoading || (isAuthenticated && authIntent) ? (
               <main id="main" className="page-loading" role="status">
                 Opening Groundwork…
               </main>
             ) : isAuthenticated ? (
-              <Navigate to={authIntent?.destination ?? '/workspace'} replace />
+              <Navigate to="/workspace" replace />
             ) : (
               <Landing
                 onStart={() => setAuthIntent({ mode: 'signup', destination: '/workspace/new' })}
@@ -174,7 +179,6 @@ export function App() {
           onClose={() => setAuthIntent(null)}
           onSuccess={() => {
             const destination = authIntent.destination;
-            setAuthIntent(null);
             navigate(destination, { replace: true });
           }}
         />

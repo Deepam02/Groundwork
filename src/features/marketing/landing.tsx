@@ -59,8 +59,7 @@ export function Landing({ onStart }: { onStart: () => void }) {
             to <em>“I’ve got this.”</em>
           </h2>
           <p>
-            One starting point.{' '}
-            <br />
+            One starting point. <br />
             Wherever you’re starting.
           </p>
         </div>

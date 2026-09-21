@@ -54,7 +54,7 @@ Use a calm editorial workspace: warm white, near-black text, muted green accents
 
 Avoid a generic gradient hero, dense card grid, oversized metric tiles, glass effects, and a chat transcript dominating the product. Use tailored composition rather than accepting the default component-library look.
 
-The opening screen has one obvious action: describe your project. Preserve the draft through a compact sign-up or login step before creating a persistent project; returning users go straight to their workspace. After first sign-up, collect one forwarding email as mail-routing setup. The workspace has three destinations: **Plan**, **Timeline**, and **Inbox**. Evidence opens in a side drawer, or a bottom sheet on mobile. Coverage is an expandable summary rather than a separate dashboard.
+The public landing page (`/`) explains the use case with a project composer, quick idea starters, three process steps, and an illustrative product preview. Preserve the draft through a compact sign-up or login step, then open `/workspace/new` for review before creating a persistent project. Signed-in visitors and returning logins go to `/workspace`, which owns the saved-project list. Private deep links preserve their destination through sign-in. Forwarding-address setup lives in Inbox when needed. Each project (`/project/:projectId`) has three destinations: **Plan**, **Timeline**, and **Inbox**. Evidence opens in a side drawer, or a bottom sheet on mobile. Coverage is an expandable summary rather than a separate dashboard.
 
 | Surface | Visible first | Details on demand |
 |---|---|---|
@@ -120,7 +120,8 @@ Use `ConvexAuthProvider`, `useConvexAuth`, and the v2 password hooks. Every priv
       components/ui/       shared primitives
       features/
         auth/              sign-up, login, session gate, sign-out
-        project/           start and project switcher
+        marketing/         public landing page and illustrative preview
+        project/           shared composer, new project, saved-project workspace
         research/          progress and questions
         plan/              requirements, evidence drawer, timeline
         inbox/             messages and change summaries

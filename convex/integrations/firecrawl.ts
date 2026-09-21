@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { env } from '../_generated/server';
 import { providerJson } from './http';
-import { publicUrl } from '../lib/domain';
+import { publicUrl, searchDomain } from '../lib/domain';
 
 const searchResponse = z.object({
   success: z.boolean(),
@@ -28,12 +28,30 @@ const scrapeResponse = z.object({
     })
     .optional(),
 });
-export async function searchWeb(query: string) {
+export type SearchOptions = {
+  includeDomains?: string[];
+  excludeDomains?: string[];
+  limit?: number;
+};
+const hosts = (values: string[] | undefined) => [
+  ...new Set((values ?? []).flatMap((value) => searchDomain(value) ?? [])),
+];
+export async function searchWeb(query: string, options: SearchOptions = {}) {
   if (!env.FIRECRAWL_API_KEY) throw new Error('Firecrawl is not connected yet.');
+  const include = hosts(options.includeDomains);
+  // The two filters oppose each other; sending both can empty the result set.
+  const exclude = include.length ? [] : hosts(options.excludeDomains);
   const parsed = searchResponse.parse(
     await providerJson('https://api.firecrawl.dev/v2/search', env.FIRECRAWL_API_KEY, {
       method: 'POST',
-      body: JSON.stringify({ query, limit: 5, sources: ['web'], timeout: 30000 }),
+      body: JSON.stringify({
+        query,
+        limit: Math.min(Math.max(options.limit ?? 10, 1), 10),
+        sources: ['web'],
+        timeout: 30000,
+        ...(include.length ? { includeDomains: include } : {}),
+        ...(exclude.length ? { excludeDomains: exclude } : {}),
+      }),
     }),
   );
   if (!parsed.success) throw new Error('Search did not complete.');

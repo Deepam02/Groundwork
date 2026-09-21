@@ -9,6 +9,10 @@ export const interpretationSchema = z.object({
   queries: z.array(short).max(3),
   missing: text.nullable(),
 });
+export const authoritySchema = z.object({
+  hosts: z.array(short).max(5),
+  queries: z.array(short).max(3),
+});
 export const selectionSchema = z.object({
   pages: z
     .array(

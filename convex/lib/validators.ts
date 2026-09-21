@@ -66,6 +66,7 @@ export const interpretation = v.object({
   missing: v.union(v.string(), v.null()),
 });
 export const candidate = v.object({ url: v.string(), title: v.string(), description: v.string() });
+export const authorities = v.object({ hosts: v.array(v.string()), queries: v.array(v.string()) });
 export const mailChange = v.object({
   requirementKey: v.string(),
   title: v.string(),

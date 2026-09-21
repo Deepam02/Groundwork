@@ -6,9 +6,9 @@ Built for the Convex All Gas Hackathon. The MVP follows [vision.md](vision.md) a
 
 ## Run locally
 
-Requires Node 22.12 or newer, npm, and two terminals. This workspace already has a running local backend and initialized authentication.
+Requires Node 22.12 or newer and npm. To use an existing backend, set the public `VITE_CONVEX_URL` in ignored `.env.local`, then run `npm run dev`. This workspace's frontend is connected to the builder's existing production backend. Frontend development does not require running `convex dev` or redeploying that backend.
 
-For a fresh checkout:
+For a fresh checkout with a separate local fixture backend, use two terminals:
 
 ```powershell
 npm ci
@@ -25,6 +25,8 @@ npm run dev
 
 Open **http://127.0.0.1:5173**. Create a disposable account, describe a project with its location, answer the research question, and explore Plan, Timeline, and Inbox. **Add sample notice** exercises the incoming-message workflow locally.
 
+`/` is the public marketing page, with idea shortcuts and an illustrative product preview. Signed-in visitors go to `/workspace`, where saved projects live. Starting an idea from the landing page preserves the draft through authentication and opens `/workspace/new` for review before creating the project. Project plans live at `/project/:projectId`; private links require sign-in and preserve their destination.
+
 The database, Auth v2 sessions, workflows, and subscriptions are real local Convex. Public sources and provider responses are explicitly labeled synthetic fixtures until keys are connected. Fixture mode is refused on cloud deployments. Local fixture results do not prove that live research works in any jurisdiction.
 
 The local authentication script works around the alpha CLI's Windows `spawnSync('npx')` issue. It refuses cloud targets, generates signing material in memory, and captures CLI output without printing secret values. Existing signing settings are preserved.
@@ -37,7 +39,17 @@ npm run test:e2e
 npm run check:connections
 ```
 
-`verify` runs TypeScript, ESLint, deterministic tests, and the production build. End-to-end tests require the local backend and frontend above. They create disposable local accounts, exercise research and inbox workflows, verify cross-tab updates and session persistence, check desktop/mobile layouts, and run axe accessibility checks. They export no credentials, session state, or traces. Screenshots stay in ignored `.local/screenshots/`.
+`verify` runs TypeScript, ESLint, deterministic tests, and the production build. Default end-to-end tests check marketing, draft handoff, private navigation, sign-up/login/sign-out, session persistence, desktop/mobile layouts, and axe accessibility. They create a temporary account on the backend configured for the running frontend, without creating research projects or sending mail. They export no credentials, session state, or traces. Screenshots stay in ignored `.local/screenshots/`.
+
+The full research/inbox fixture journey is opt-in. Run it only with the separate local fixture backend above, never the production deployment:
+
+```powershell
+$env:GROUNDWORK_LOCAL_E2E = 'true'
+npm run test:e2e -- tests/e2e/journey.spec.ts
+Remove-Item Env:GROUNDWORK_LOCAL_E2E
+```
+
+That journey additionally checks answer refinement, incoming sample notices, and cross-tab live updates.
 
 `check:connections` reports setting names and presence only. It does **not** validate keys, call paid APIs, or prove provider availability.
 

@@ -4,7 +4,7 @@
 - **Event:** Convex All Gas Hackathon
 - **What it does:** Investigates project-specific approvals and maintains a source-backed plan as research, answers, and correspondence change.
 - **Live app:** not deployed
-- **Repo:** none
+- **Repo:** https://github.com/Deepam02/Groundwork
 - **Frontend:** Convex static hosting
 - **Convex deployment:** not deployed
 - **Components:** @convex-dev/auth, @convex-dev/agent, @convex-dev/workflow, @convex-dev/rate-limiter, @convex-dev/static-hosting
@@ -12,7 +12,7 @@
 - **Auth:** Convex Auth
 - **AI models:** gpt-4.1-mini (configured through the direct OpenAI API; live inference pending credentials)
 - **Started:** 2026-09-13T07:47:38Z
-- **Last updated:** 2026-09-13T14:47:57Z
+- **Last updated:** 2026-09-21T14:07:09Z
 
 ## Log
 
@@ -49,3 +49,13 @@ Built the light-mode React/Vite workspace with project entry, adaptive questions
 Verified local account creation, login, wrong-password recovery, reload persistence, answer refinement and edits, recorded progress, duplicate sample notices, correspondence dates/tasks, and live updates across two browser tabs. TypeScript, ESLint, 22 deterministic domain/provider/backend tests, and the production build passed. The complete Playwright journey also passed against the compiled frontend, with desktop/mobile screenshots and zero detected WCAG A/AA violations on the checked landing and plan views. Evidence is from current source and command runs, without Git history.
 
 Provider responses remain explicitly labeled local fixtures. Real OpenAI inference, Firecrawl discovery across countries, AgentMail webhook delivery, cloud authentication, and public hosting are pending credentials and final live verification. Added a setting-presence check that returns no secret values and documented the connection procedure in `README.md`. No cloud publication, commit, push, or submission was performed.
+
+### 2026-09-14 - 149da65
+Replaced the single start screen with a public marketing landing page, a shared project composer, and a workspace home that lists saved projects. Routes are now `/`, `/workspace`, `/workspace/new`, and `/project/:projectId`; a landing-page draft survives sign-up and is reviewed before the project is created (`src/app/app.tsx`, `src/features/marketing/`, `src/features/project/`). Added Playwright coverage for marketing entry, draft handoff, and workspace navigation (`tests/e2e/entry-flow.spec.ts`), with axe checks on the landing and workspace views.
+
+### 2026-09-21 - working tree
+Made official-source citation a rule enforced in code rather than a prompt preference. Research now runs two passes: discovery searches find the responsible authority, then evidence searches run only inside the hostnames those results actually returned. Blogs, consultants, and directories can inform the query vocabulary but are dropped before anything is read or cited (`convex/workflows.ts`, `convex/inference.ts`).
+Added `includeDomains`/`excludeDomains`/`limit` to the Firecrawl adapter, normalized to bare hostnames, with the two filters never sent together and discovery widened from 5 to 10 results (`convex/integrations/firecrawl.ts`). Authority hostnames proposed by the model are intersected with the hosts discovery returned, so an invented domain cannot widen the evidence set, and selected pages pass an `official` gate before the scrape loop (`convex/lib/domain.ts`).
+A run with no identifiable authority, or no confirmable official page, now ends with an explicit coverage gap instead of falling back to unofficial pages. Mail-triggered follow-ups previously read their top two search hits with `official` hardcoded to false; they go through the same gate now. Queries use jurisdiction and document words (permit, licence, registration, notification, circular, form, fee) and avoid explainer phrasing; official PDFs are selectable as primary sources, though OCR for scanned documents is still out of scope.
+Also fixed a redirect race that could drop the landing-page draft after sign-up, and refreshed `README.md`, `IMPLEMENTATION_PLAN.md`, and `CLAUDE.md` for the new routes and the opt-in fixture journey.
+Verification is `npm run verify` on this checkout: TypeScript, ESLint, 25 deterministic tests, and the production build. New tests cover domain-filter emission, exclusive filters, exact-host reuse, and unofficial pages being dropped before scraping. These are deterministic tests against documented response shapes, not live Firecrawl runs; the ranking improvement itself is unverified until keys are connected.

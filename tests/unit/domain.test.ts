@@ -6,11 +6,42 @@ import {
   validateEvidence,
   orderRequirements,
   validateMailChanges,
+  admittedHosts,
+  officialPages,
   latestByKey,
 } from '../../convex/lib/domain';
 import { verifySignature } from '../../convex/integrations/agentmail';
 import { requirement } from './fixtures';
 import { fixtureResearch } from '../../convex/integrations/fixtures';
+
+describe('official source admission', () => {
+  const candidates = [
+    'https://bbmp.gov.in/trade-licence',
+    'https://www.fssai.gov.in/notification.pdf',
+    'https://consultant-blog.example.com/how-to-open-a-cafe',
+  ];
+  it('reuses only the exact hosts discovery returned', () => {
+    expect(
+      admittedHosts(
+        ['www.bbmp.gov.in', 'https://fssai.gov.in/forms', 'karnataka.gov.in', 'nonsense'],
+        candidates,
+      ),
+    ).toEqual(['bbmp.gov.in', 'fssai.gov.in']);
+    expect(admittedHosts(['consultant-blog.example.com'], candidates)).toEqual([
+      'consultant-blog.example.com',
+    ]);
+    expect(admittedHosts(['bbmp.gov.in'], [])).toEqual([]);
+  });
+  it('drops unofficial pages before the scrape loop instead of padding the set', () => {
+    const pages = [
+      { url: candidates[0], official: true },
+      { url: candidates[2], official: false },
+      { url: candidates[1], official: true },
+    ];
+    expect(officialPages(pages).map((p) => p.url)).toEqual([candidates[0], candidates[1]]);
+    expect(officialPages([{ url: candidates[2], official: false }])).toEqual([]);
+  });
+});
 
 describe('evidence and public source boundaries', () => {
   it('uses the newest answer and leaves an uncertain fixture answer unresolved', () => {

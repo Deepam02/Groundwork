@@ -29,6 +29,28 @@ describe('provider adapters against documented response shapes', () => {
     const body = JSON.parse(request.mock.calls[0][1].body);
     expect(body.sources).toEqual(['web']);
     expect(body.scrapeOptions).toBeUndefined();
+    expect(body.limit).toBe(10);
+    expect(body.includeDomains).toBeUndefined();
+  });
+  it('constrains a search to bare authority hostnames and never sends both domain filters', async () => {
+    vi.stubEnv('FIRECRAWL_API_KEY', 'unit-test-value');
+    const request = vi
+      .fn()
+      .mockImplementation(async () => Response.json({ success: true, data: { web: [] } }));
+    vi.stubGlobal('fetch', request);
+    await searchWeb('licence application', {
+      includeDomains: ['https://www.bbmp.gov.in/forms?a=1', 'FSSAI.GOV.IN', 'not a domain'],
+      excludeDomains: ['example-blog.com'],
+      limit: 40,
+    });
+    const constrained = JSON.parse(request.mock.calls[0][1].body);
+    expect(constrained.includeDomains).toEqual(['bbmp.gov.in', 'fssai.gov.in']);
+    expect(constrained.excludeDomains).toBeUndefined();
+    expect(constrained.limit).toBe(10);
+    await searchWeb('licence application', { excludeDomains: ['https://example-blog.com/posts'] });
+    const excluded = JSON.parse(request.mock.calls[1][1].body);
+    expect(excluded.excludeDomains).toEqual(['example-blog.com']);
+    expect(excluded.includeDomains).toBeUndefined();
   });
   it('bounds ordinary scraped text and rejects a blocked or empty page', async () => {
     vi.stubEnv('FIRECRAWL_API_KEY', 'unit-test-value');

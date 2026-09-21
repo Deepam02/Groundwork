@@ -2,7 +2,10 @@ import { test, expect } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 import AxeBuilder from '@axe-core/playwright';
 
-test.skip(process.env.GROUNDWORK_LOCAL_E2E !== 'true', 'Enable GROUNDWORK_LOCAL_E2E only for the local fixture backend; these tests start research and inject sample mail.');
+test.skip(
+  process.env.GROUNDWORK_LOCAL_E2E !== 'true',
+  'Enable GROUNDWORK_LOCAL_E2E only for the local fixture backend; these tests start research and inject sample mail.',
+);
 
 test('a project goes from description to a living plan, with persistent authentication', async ({
   page,
@@ -14,12 +17,16 @@ test('a project goes from description to a living plan, with persistent authenti
   await expect(page.getByRole('heading', { name: 'Big ideas. Clear next steps.' })).toBeVisible();
   await expect(page.getByText('PICK UP WHERE YOU LEFT OFF')).toHaveCount(0);
   await page.getByRole('button', { name: 'The sources', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'The authority. The page. The passage.' })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'The authority. The page. The passage.' }),
+  ).toBeVisible();
   await page.getByRole('button', { name: 'What changed', exact: true }).click();
   await expect(page.locator('.example-mail-change')).toContainText('The preparation tasks');
   await page.getByRole('button', { name: 'A clear plan', exact: true }).click();
   await page.getByRole('button', { name: 'Open a café', exact: true }).click();
-  await expect(page.getByLabel('What are you planning?')).toHaveValue('I’m opening a small café in ');
+  await expect(page.getByLabel('What are you planning?')).toHaveValue(
+    'I’m opening a small café in ',
+  );
   await page.screenshot({ path: '.local/screenshots/home-desktop.png', fullPage: true });
   const homeAccessibility = await new AxeBuilder({ page })
     .withTags(['wcag2a', 'wcag2aa'])
@@ -40,7 +47,9 @@ test('a project goes from description to a living plan, with persistent authenti
   await page.getByRole('button', { name: 'Create your account', exact: true }).click();
   await expect(page.getByRole('dialog')).toBeHidden();
   await expect(page).toHaveURL(/\/workspace\/new$/);
-  await expect(page.getByLabel('What are you planning?')).toHaveValue('I am opening a small café in Dublin, Ireland, with food prepared on-site.');
+  await expect(page.getByLabel('What are you planning?')).toHaveValue(
+    'I am opening a small café in Dublin, Ireland, with food prepared on-site.',
+  );
   await expect(page.locator('.hero')).toHaveCount(0);
   await page.screenshot({ path: '.local/screenshots/new-project-desktop.png', fullPage: true });
   await page.getByRole('button', { name: 'Find my next steps' }).click();
@@ -70,7 +79,9 @@ test('a project goes from description to a living plan, with persistent authenti
   await page.screenshot({ path: '.local/screenshots/workspace-desktop.png', fullPage: true });
   await page.setViewportSize({ width: 390, height: 844 });
   await page.screenshot({ path: '.local/screenshots/workspace-mobile.png', fullPage: true });
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.locator('.workspace-project-row').first().click();
   await page.reload();
@@ -149,7 +160,9 @@ test('a project goes from description to a living plan, with persistent authenti
   expect(failures).toEqual([]);
 });
 
-test('a general signup opens an empty workspace and private routes preserve their destination', async ({ page }) => {
+test('a general signup opens an empty workspace and private routes preserve their destination', async ({
+  page,
+}) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Get started', exact: true }).click();
   const username = `test_${randomUUID().slice(0, 8)}`;
@@ -158,14 +171,18 @@ test('a general signup opens an empty workspace and private routes preserve thei
   await page.getByLabel('Password', { exact: true }).fill(password);
   await page.getByRole('button', { name: 'Create your account', exact: true }).click();
   await expect(page).toHaveURL(/\/workspace$/);
-  await expect(page.getByRole('heading', { name: 'Every plan starts with an idea.' })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'Every plan starts with an idea.' }),
+  ).toBeVisible();
   await expect(page.locator('.hero')).toHaveCount(0);
   await page.screenshot({ path: '.local/screenshots/workspace-empty.png', fullPage: true });
   await page.getByRole('link', { name: 'Create your first project' }).click();
   await expect(page).toHaveURL(/\/workspace\/new$/);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.screenshot({ path: '.local/screenshots/new-project-mobile.png', fullPage: true });
-  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(
+    true,
+  );
   await page.getByRole('button', { name: 'Sign out' }).click();
   await expect(page).toHaveURL(/\/$/);
   await page.goto('/workspace/new');

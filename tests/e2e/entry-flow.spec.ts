@@ -4,24 +4,30 @@ import AxeBuilder from '@axe-core/playwright';
 
 test('marketing entry, draft handoff, private workspace, and returning login', async ({ page }) => {
   const errors: string[] = [];
-  page.on('pageerror', error => errors.push(error.message));
+  page.on('pageerror', (error) => errors.push(error.message));
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Big ideas. Clear next steps.' })).toBeVisible();
   await expect(page.getByText('PICK UP WHERE YOU LEFT OFF')).toHaveCount(0);
   await page.getByRole('button', { name: 'The sources', exact: true }).click();
-  await expect(page.getByRole('heading', { name: 'The authority. The page. The passage.' })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'The authority. The page. The passage.' }),
+  ).toBeVisible();
   await page.getByRole('button', { name: 'What changed', exact: true }).click();
   await expect(page.locator('.example-mail-change')).toContainText('The preparation tasks');
   await page.getByRole('button', { name: 'A clear plan', exact: true }).click();
   await page.screenshot({ path: '.local/screenshots/landing-updated-desktop.png', fullPage: true });
   const accessibility = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze();
-  expect(accessibility.violations.map(v => ({ id: v.id, targets: v.nodes.map(n => n.target) }))).toEqual([]);
+  expect(
+    accessibility.violations.map((v) => ({ id: v.id, targets: v.nodes.map((n) => n.target) })),
+  ).toEqual([]);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.screenshot({ path: '.local/screenshots/landing-updated-mobile.png', fullPage: true });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.getByRole('button', { name: 'Open a café', exact: true }).click();
-  await expect(page.getByLabel('What are you planning?')).toHaveValue('I’m opening a small café in ');
+  await expect(page.getByLabel('What are you planning?')).toHaveValue(
+    'I’m opening a small café in ',
+  );
   const draft = 'I am opening a small café in Dublin, Ireland.';
   await page.getByLabel('What are you planning?').fill(draft);
   await page.getByRole('button', { name: 'Find my next steps', exact: true }).click();
@@ -35,17 +41,30 @@ test('marketing entry, draft handoff, private workspace, and returning login', a
   await expect(page).toHaveURL(/\/workspace\/new$/);
   await expect(page.getByLabel('What are you planning?')).toHaveValue(draft);
   await expect(page.locator('.hero')).toHaveCount(0);
-  await page.screenshot({ path: '.local/screenshots/new-project-updated-desktop.png', fullPage: true });
+  await page.screenshot({
+    path: '.local/screenshots/new-project-updated-desktop.png',
+    fullPage: true,
+  });
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.screenshot({ path: '.local/screenshots/new-project-updated-mobile.png', fullPage: true });
+  await page.screenshot({
+    path: '.local/screenshots/new-project-updated-mobile.png',
+    fullPage: true,
+  });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   await page.getByRole('link', { name: 'Your workspace', exact: true }).click();
   await expect(page).toHaveURL(/\/workspace$/);
-  await expect(page.getByRole('heading', { name: 'Every plan starts with an idea.' })).toBeVisible();
+  await expect(
+    page.getByRole('heading', { name: 'Every plan starts with an idea.' }),
+  ).toBeVisible();
   await page.setViewportSize({ width: 1440, height: 1000 });
-  await page.screenshot({ path: '.local/screenshots/workspace-updated-desktop.png', fullPage: true });
-  const workspaceAccessibility = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa']).analyze();
-  expect(workspaceAccessibility.violations.map(v => v.id)).toEqual([]);
+  await page.screenshot({
+    path: '.local/screenshots/workspace-updated-desktop.png',
+    fullPage: true,
+  });
+  const workspaceAccessibility = await new AxeBuilder({ page })
+    .withTags(['wcag2a', 'wcag2aa'])
+    .analyze();
+  expect(workspaceAccessibility.violations.map((v) => v.id)).toEqual([]);
   await page.reload();
   await expect(page.getByRole('heading', { name: 'Your ideas, in motion.' })).toBeVisible();
   await page.goto('/');

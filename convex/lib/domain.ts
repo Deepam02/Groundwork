@@ -44,6 +44,39 @@ export function publicUrl(raw: string): string | null {
   }
 }
 
+/** Firecrawl's domain filters take bare hostnames, not URLs. */
+export function searchDomain(raw: string): string | null {
+  const host = raw
+    .trim()
+    .toLowerCase()
+    .replace(/^[a-z][a-z0-9+.-]*:\/\//, '')
+    .replace(/^[^/@]*@/, '')
+    .split(/[/?#]/)[0]
+    .replace(/:\d+$/, '')
+    .replace(/^www\./, '');
+  return /^[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(host) ? host : null;
+}
+
+/**
+ * A later search may only be constrained to hosts the discovery pass actually
+ * returned, so a hallucinated authority domain cannot widen the evidence set.
+ */
+export function admittedHosts(proposed: string[], candidateUrls: string[]): string[] {
+  const found = new Set(candidateUrls.flatMap((url) => searchDomain(url) ?? []));
+  return [...new Set(proposed.flatMap((host) => searchDomain(host) ?? []))]
+    .filter((host) => found.has(host))
+    .slice(0, 5);
+}
+
+/**
+ * The official-source gate. Selection is a model judgement, so it is enforced
+ * here before anything is read: an accurate consultant page is still not
+ * evidence. Returning fewer sources is correct; padding with unofficial ones is not.
+ */
+export function officialPages<T extends { official: boolean }>(pages: T[]): T[] {
+  return pages.filter((page) => page.official);
+}
+
 const normalize = (text: string) => text.replace(/\s+/g, ' ').trim().toLowerCase();
 
 /** Unsupported fields cannot become confirmed just because an LLM emitted JSON. */
