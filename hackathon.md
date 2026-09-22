@@ -8,11 +8,11 @@
 - **Frontend:** Convex static hosting
 - **Convex deployment:** https://steady-chipmunk-476.convex.cloud
 - **Components:** @convex-dev/auth, @convex-dev/agent, @convex-dev/workflow, @convex-dev/rate-limiter, @convex-dev/static-hosting
-- **Convex features:** schema, indexes, queries, mutations, actions, HTTP actions, realtime queries, durable workflows
+- **Convex features:** schema, indexes, queries, mutations, actions, HTTP actions, realtime queries, durable workflows, file storage, scheduled functions
 - **Auth:** Convex Auth
-- **AI models:** gpt-4.1-mini (configured through the direct OpenAI API; live inference pending credentials)
+- **AI models:** gpt-4.1-mini (default in `convex/agent.ts`, overridable per deployment via `OPENAI_MODEL`; reached through the direct OpenAI API)
 - **Started:** 2026-09-13T07:47:38Z
-- **Last updated:** 2026-09-22T13:13:07Z
+- **Last updated:** 2026-09-22T16:30:00Z
 
 ## Log
 
@@ -72,3 +72,14 @@ Verification is `npm run verify` on this checkout: TypeScript, ESLint, 31 determ
 ### 2026-09-22 - working tree
 A checklist step is now a specific filing document. Each lead is searched on its own for the application form, filing page, notification, circular, or PDF. A department homepage is not accepted as the citation. When that document is not found, a not-started step is removed from the finished checklist and recorded as a gap. The evidence link is labeled for the document and shows its URL. Initial-run caps are 16 searches, 14 scrapes, and 8 model calls; a mail follow-up stays at 2 of each (`convex/workflows.ts`, `convex/inference.ts`, `convex/research.ts`, `convex/lib/domain.ts`, `src/features/plan/workspace.tsx`, `src/features/plan/evidence-drawer.tsx`).
 Verification is `npm run verify` on this checkout: TypeScript, ESLint, 33 deterministic tests, and the production build. Tests cover PDF-over-homepage ranking, one form per fixture step, retiring a step with no document, and an unofficial page leaving a step unchecked. This is not a live Firecrawl run. The saved café plan on the production deployment is unchanged until this code is deployed and that project is researched again.
+
+### 2026-09-22 - c0cbcf0
+Rebuilt the project page around the research itself. Every decision a run makes is now persisted to a `researchEvents` table and streamed to the page as it happens: the literal search queries, each candidate with its host, and the reason anything was turned down — "Consultant site, not the authority", "Department home page, not the application", "Forum or publisher, not an authority". The page is one two-pane shell throughout: a left rail of confirmed steps beside a right pane that shows the live trail during a run, a clarifying question when one is asked, and the selected step's detail afterward. The evidence drawer and the separate timeline view are gone; mail-derived dates render on the steps themselves and the inbox moved behind a header button (`convex/trail.ts`, `convex/schema.ts`, `src/features/plan/research-trail.tsx`, `step-rail.tsx`, `step-detail.tsx`, `overview.tsx`, `workspace.tsx`).
+
+Steps no longer appear and then vanish. `requirements.stage` records `lead`, `confirmed`, or `dismissed`; a lead that no official page confirms is patched to `dismissed` with its gap explanation instead of being deleted, and the rail shows it under a "couldn't confirm" group (`convex/research.ts`, `convex/lib/validators.ts`).
+
+Source ranking was inverted to prefer somewhere to apply over something to read. `convex/lib/sources.ts` classifies a page as `apply`, `form`, `notice`, `guidance`, or `lead` and scores an online application or service page above a form PDF above a circular; the first search pass looks for the application and only the retry falls back to `filetype:pdf`. A confirmed step carries an `applyUrl` validated against the stored official sources like every other field. PDFs that do get cited are fetched into Convex file storage under an 8 MB cap and served inline from a `/document` HTTP route, so they embed in the page instead of sending anyone to a site that refuses framing (`convex/documents.ts`, `convex/http.ts`, `src/features/plan/document-viewer.tsx`).
+
+The confirm phase now gates on authority before anything is read: all search candidates go to one `pickOfficial` call, and only what survives is scraped. Scraped markdown is trimmed of site navigation before storage, so skip links and quick-link menus never reach the model or get quoted back as evidence. A step query that arrives as a bare URL falls back to the step's own words. Pacing went to a Firecrawl token bucket of 10/min with a burst of 5 and `maxParallelism: 3`, with per-step lookups batched through `Promise.all`; the provider budget is unchanged at 16 searches / 14 scrapes / 8 model calls (`convex/workflows.ts`, `convex/inference.ts`, `convex/lib/limits.ts`, `convex/lib/workflow.ts`).
+
+Verification is `npm run verify` on this checkout: TypeScript, ESLint, 37 deterministic tests, and the production build. Unlike earlier entries this was also exercised live against the dev deployment across three runs, which is how the officiality gate, the chrome trimming, the URL-as-query fallback, and a look-alike `.com` domain being accepted for a named public body were each found and fixed. Production still runs the previously deployed code; nothing here is live at https://steady-chipmunk-476.convex.site until it is deployed.
