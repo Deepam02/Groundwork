@@ -1,136 +1,292 @@
 import { v } from 'convex/values';
 import { internal } from './_generated/api';
 import { workflow } from './lib/workflow';
-import { officialPages } from './lib/domain';
+import {
+  officialPages,
+  guidePages,
+  authorityQueries,
+  isBudgetError,
+  nextInvestigationPhase,
+} from './lib/domain';
 import type { Infer } from 'convex/values';
-import type { candidate } from './lib/validators';
+import { leadStep, question, type candidate } from './lib/validators';
 
 export const researchFlow = workflow
   .define({ args: { runId: v.id('researchRuns'), revision: v.number() }, returns: v.null() })
   .handler(async (step, args): Promise<null> => {
     try {
       const data = await step.runQuery(internal.research.context, args);
-      await step.runMutation(internal.research.setStage, {
-        ...args,
-        stage: 'Understanding your project',
-        state: data.run.refined ? 'refining' : 'researching',
-      });
       const state = data.run.refined ? 'refining' : 'researching';
-      let discovery: string[];
       const mailFollowup = data.run.trigger.startsWith('mail:');
-      if (mailFollowup) {
-        discovery = [data.run.trigger.slice(5)];
-      } else if (data.run.refined) {
-        discovery = [
-          `${data.project.location} ${data.project.activity} government authority licence permit registration ${data.questions.map((q) => q.answer ?? '').join(' ')}`,
-        ];
-      } else {
-        const result = await step.runAction(internal.inference.interpret, args);
-        await step.runMutation(internal.research.initialize, { ...args, result });
-        if (result.missing) return null;
-        // Two discovery queries leave budget for the constrained evidence passes.
-        discovery = result.queries.slice(0, 2);
+
+      async function reserve(kind: 'searches' | 'scrapes' | 'modelCalls') {
+        try {
+          return await step.runMutation(internal.research.reserve, { ...args, kind });
+        } catch (error) {
+          if (isBudgetError(error)) return null;
+          throw error;
+        }
       }
-      async function runSearch(query: string, includeDomains?: string[]) {
+      async function runSearch(query: string, kind: 'guide' | 'official') {
         for (let attempt = 0; attempt < 2; attempt++) {
-          const wait = await step.runMutation(internal.research.reserve, {
-            ...args,
-            kind: 'searches',
-          });
+          const wait = await reserve('searches');
+          if (wait === null) return { budget: true as const, hits: [] as Infer<typeof candidate>[] };
           if (wait) await step.sleep(wait);
           try {
-            return await step.runAction(internal.inference.search, {
-              ...args,
-              query,
-              includeDomains,
-            });
+            const hits = await step.runAction(internal.inference.search, { ...args, query, kind });
+            return { budget: false as const, hits };
           } catch {
-            if (attempt === 1) throw new Error('Search could not finish.');
+            if (attempt === 1) return { budget: false as const, hits: [] };
             await step.sleep(8000);
           }
         }
-        return [];
+        return { budget: false as const, hits: [] };
       }
-      await step.runMutation(internal.research.setStage, {
-        ...args,
-        stage: 'Finding the right authorities',
-        state,
-      });
-      let candidates: Infer<typeof candidate>[] = [];
-      for (const query of discovery) candidates.push(...(await runSearch(query)));
-      if (!mailFollowup) {
-        // Discovery may surface blogs and consultants. They are read for
-        // vocabulary and the responsible body's name, then dropped: evidence is
-        // collected only from the authority hosts they revealed.
-        const authorities = await step.runAction(internal.inference.resolveAuthorities, {
+      async function finish(keepConfirmed: boolean) {
+        await step.runMutation(internal.research.setStage, {
           ...args,
-          candidates,
+          stage: 'Connecting the steps in your plan',
+          state,
         });
-        if (!authorities.hosts.length) {
+        try {
+          const result = await step.runAction(internal.inference.synthesize, args);
+          await step.runMutation(internal.research.applyResult, {
+            ...args,
+            result: keepConfirmed ? { ...result, questions: [] } : result,
+            final: true,
+            keepConfirmed,
+          });
+        } catch (error) {
+          if (!isBudgetError(error)) throw error;
+          await step.runMutation(internal.research.settle, args);
+        }
+      }
+
+      if (mailFollowup) {
+        await step.runMutation(internal.research.setStage, {
+          ...args,
+          stage: 'Checking the notice against public guidance',
+          state,
+        });
+        const found = await runSearch(data.run.trigger.slice(5), 'official');
+        if (!found.budget && found.hits.length) {
+          try {
+            const pages = officialPages(
+              await step.runAction(internal.inference.select, { ...args, candidates: found.hits }),
+            );
+            for (const page of pages.slice(0, 2)) {
+              const wait = await reserve('scrapes');
+              if (wait === null) break;
+              if (wait) await step.sleep(wait);
+              const source = await step.runAction(internal.inference.scrape, { ...args, page });
+              if (source) await step.runMutation(internal.research.saveSource, { ...args, source });
+            }
+          } catch (error) {
+            if (!isBudgetError(error)) throw error;
+          }
+        }
+        await finish(false);
+        return null;
+      }
+
+      const profilePending = data.questions.some(
+        (question) => question.key === 'project-context' && question.answer === undefined,
+      );
+      const mapped =
+        data.sources.some((source) => !source.official) ||
+        data.requirements.some((row) => Boolean(row.leadQuery));
+      const phase = nextInvestigationPhase({
+        location: data.project.location,
+        activity: data.project.activity,
+        profilePending,
+        mapped,
+      });
+      let activityName = data.project.activity;
+      let placeName = data.project.location;
+      let guideQueries: string[] | null = null;
+      if (phase === 'profile') {
+        await step.runMutation(internal.research.setStage, {
+          ...args,
+          stage: 'Understanding your project',
+          state,
+        });
+        const result = await step.runAction(internal.inference.interpret, args);
+        await step.runMutation(internal.research.initialize, { ...args, result });
+        if (result.missing) return null;
+        activityName = result.activity;
+        placeName = result.location;
+        guideQueries = result.queries.slice(0, 3);
+      }
+
+      if (phase !== 'confirm') {
+        await step.runMutation(internal.research.setStage, {
+          ...args,
+          stage: 'Reading local accounts of this process',
+          state,
+        });
+        const answers = data.questions.map((question) => question.answer ?? '').join(' ');
+        const place = `${placeName} ${answers}`.trim();
+        const fallback = [
+          `${activityName} ${place} permit process reddit`,
+          `${activityName} ${place} what permits did you need`,
+          `${activityName} ${place} step by step licence application`,
+        ];
+        const queries = (guideQueries?.map((query) => query.trim()).filter(Boolean) ?? []).slice(
+          0,
+          3,
+        );
+        let budget = false;
+        const candidates: Infer<typeof candidate>[] = [];
+        for (const query of queries.length ? queries : fallback) {
+          const found = await runSearch(query, 'guide');
+          if (found.budget) {
+            budget = true;
+            break;
+          }
+          candidates.push(...found.hits);
+        }
+        for (const page of guidePages(candidates)) {
+          if (budget) break;
+          const wait = await reserve('scrapes');
+          if (wait === null) {
+            budget = true;
+            break;
+          }
+          if (wait) await step.sleep(wait);
+          const source = await step.runAction(internal.inference.scrape, {
+            ...args,
+            page: { url: page.url, title: page.title, authority: page.title, official: false },
+          });
+          if (source)
+            await step.runMutation(internal.research.saveSource, {
+              ...args,
+              source: { ...source, official: false },
+            });
+        }
+        const guides = await step.runQuery(internal.research.context, args);
+        if (!guides.sources.some((source) => !source.official)) {
           await step.runMutation(internal.research.fail, {
             ...args,
             message:
-              'No responsible public authority could be identified for this project, so nothing was read. Groundwork does not cite blogs or consultants in its place. Add the city, region and country, or name the department you expect, then run it again.',
+              'No local account described the steps for this project, so nothing was confirmed. Add the city and what you are doing, then try again.',
           });
           return null;
         }
         await step.runMutation(internal.research.setStage, {
           ...args,
-          stage: `Checking ${authorities.hosts[0]}`,
+          stage: 'Listing the steps people had to file',
           state,
         });
-        candidates = [];
-        for (const query of authorities.queries.length ? authorities.queries : discovery)
-          candidates.push(...(await runSearch(query, authorities.hosts)));
+        let procedure: {
+          steps: Infer<typeof leadStep>[];
+          question: Infer<typeof question> | null;
+        } | null = null;
+        try {
+          procedure = await step.runAction(internal.inference.extractProcedure, args);
+        } catch (error) {
+          if (!isBudgetError(error)) throw error;
+        }
+        const published = procedure
+          ? await step.runMutation(internal.research.publishLeads, {
+              ...args,
+              steps: procedure.steps,
+              question: procedure.question,
+            })
+          : { asked: false, count: 0 };
+        if (!published.count) {
+          await step.runMutation(internal.research.fail, {
+            ...args,
+            message:
+              'No local account described the steps for this project, so nothing was confirmed. Add the city and what you are doing, then try again.',
+          });
+          return null;
+        }
+        if (published.asked) return null;
       }
-      candidates = [...new Map(candidates.map((c) => [c.url, c])).values()].slice(0, 15);
-      // The selector is a model judgement, so the gate is enforced here too.
-      const pages = candidates.length
-        ? officialPages(await step.runAction(internal.inference.select, { ...args, candidates }))
-        : [];
-      if (!pages.length) {
-        await step.runMutation(internal.research.fail, {
-          ...args,
-          message:
-            'No official source could be confirmed for this project in this pass, so no requirement was cited. Unofficial pages were not used. Try again with more detail about the location and activity.',
-        });
-        return null;
-      }
-      let read = 0;
-      let publishedPreview = false;
-      for (const page of pages.slice(0, mailFollowup ? 2 : data.run.refined ? 3 : 5)) {
-        if (data.sources.some((s) => s.url === page.url)) continue;
+
+      const current = await step.runQuery(internal.research.context, args);
+      const pending = current.requirements.filter(
+        (row) => row.applicability === 'checking' && row.leadQuery,
+      );
+      const groups = authorityQueries(
+        pending.flatMap((row) =>
+          row.leadQuery
+            ? [{ key: row.key, authority: row.authority, query: row.leadQuery }]
+            : [],
+        ),
+      );
+      let pool: Infer<typeof candidate>[] = [];
+      for (const group of groups) {
         await step.runMutation(internal.research.setStage, {
           ...args,
-          stage: `Reading ${page.authority}`,
+          stage: `Checking ${group.authority}`,
           state,
         });
-        const wait = await step.runMutation(internal.research.reserve, {
-          ...args,
-          kind: 'scrapes',
-        });
-        if (wait) await step.sleep(wait);
-        const source = await step.runAction(internal.inference.scrape, { ...args, page });
-        if (source) {
-          await step.runMutation(internal.research.saveSource, { ...args, source });
-          read++;
-        }
-        // A mail follow-up has budget for one synthesis only.
-        if (read === 2 && !data.run.refined && !mailFollowup && !publishedPreview) {
-          const result = await step.runAction(internal.inference.synthesize, args);
-          await step.runMutation(internal.research.applyResult, { ...args, result, final: false });
-          publishedPreview = true;
+        const found = await runSearch(group.query, 'official');
+        if (found.budget) break;
+        pool.push(...found.hits);
+      }
+      pool = [...new Map(pool.map((hit) => [hit.url, hit])).values()].slice(0, 40);
+      let picks: { key: string; url: string; title: string; authority: string }[] = [];
+      if (pool.length && pending.length) {
+        try {
+          picks = await step.runAction(internal.inference.pickOfficial, {
+            ...args,
+            steps: pending.flatMap((row) =>
+              row.leadQuery
+                ? [
+                    {
+                      key: row.key,
+                      title: row.title,
+                      authority: row.authority,
+                      kind: row.kind,
+                      reason: row.reason,
+                      query: row.leadQuery,
+                    },
+                  ]
+                : [],
+            ),
+            candidates: pool,
+          });
+        } catch (error) {
+          if (!isBudgetError(error)) throw error;
         }
       }
-      await step.runMutation(internal.research.setStage, {
-        ...args,
-        stage: 'Connecting the steps in your plan',
-        state: data.run.refined ? 'refining' : 'researching',
-      });
-      const result = await step.runAction(internal.inference.synthesize, args);
-      await step.runMutation(internal.research.applyResult, { ...args, result, final: true });
+      const scraped = new Set<string>();
+      for (const pick of picks) {
+        await step.runMutation(internal.research.setStage, {
+          ...args,
+          stage: `Reading ${pick.authority}`,
+          state,
+        });
+        if (!scraped.has(pick.url)) {
+          const wait = await reserve('scrapes');
+          if (wait === null) break;
+          if (wait) await step.sleep(wait);
+          const source = await step.runAction(internal.inference.scrape, {
+            ...args,
+            page: {
+              url: pick.url,
+              title: pick.title,
+              authority: pick.authority,
+              official: true,
+            },
+          });
+          if (source)
+            await step.runMutation(internal.research.saveSource, {
+              ...args,
+              source: { ...source, official: true },
+            });
+          scraped.add(pick.url);
+        }
+        await step.runMutation(internal.research.confirmLead, {
+          ...args,
+          key: pick.key,
+          url: pick.url,
+        });
+      }
+      await finish(true);
     } catch {
-      // Do not persist raw provider errors: they may include request data or headers.
       await step.runMutation(internal.research.fail, {
         ...args,
         message:

@@ -1,5 +1,5 @@
 import type { Infer } from 'convex/values';
-import type { interpretation, researchResult, mailResult } from '../lib/validators';
+import type { interpretation, procedure, researchResult, mailResult } from '../lib/validators';
 import type { SourceInput } from '../lib/domain';
 
 // Explicit local-only provider fixtures. These are synthetic, not legal guidance.
@@ -15,10 +15,23 @@ export function fixtureInterpret(description: string): Infer<typeof interpretati
     title: activity,
     location,
     activity,
-    queries: [`${location} project approvals official`, `${location} premises safety official`],
+    queries: [
+      `${location} ${activity} permit process reddit`,
+      `${location} ${activity} what permits did you need`,
+      `${location} ${activity} step by step application`,
+    ],
     missing: match ? null : 'Which city and country is your project in?',
   };
 }
+export const fixtureGuides: SourceInput[] = [
+  {
+    url: 'https://example.org/groundwork-fixture/local-account',
+    title: 'What I had to file for a small café',
+    authority: 'A local account',
+    official: false,
+    text: 'SYNTHETIC DEVELOPMENT FIXTURE. A neighbour described the full procedure: a planning review, a business registration, a safety inspection, and a separate permission if furniture uses the public footpath.',
+  },
+];
 export const fixtureSources: SourceInput[] = [
   {
     url: 'https://example.org/groundwork-fixture/planning',
@@ -49,6 +62,33 @@ export const fixtureSources: SourceInput[] = [
     text: 'SYNTHETIC DEVELOPMENT FIXTURE. A separate permission is required for furniture placed on a public footpath. This permission does not apply when all furniture remains inside the premises.',
   },
 ];
+export function fixtureProcedure(answer: string): Infer<typeof procedure> {
+  const steps = [
+    ['planning', 'Confirm the premises use', 'Planning', 'Sample Planning Office'],
+    ['registration', 'Register your business', 'Registration', 'Sample Business Registry'],
+    ['safety', 'Arrange a safety inspection', 'Inspection', 'Sample Safety Office'],
+    ['outdoor', 'Check outdoor permission', 'Licence', 'Sample Public Realm Office'],
+  ].map(([key, title, kind, authority]) => ({
+    key,
+    title,
+    kind,
+    authority,
+    reason: `A local account mentioned ${title.toLowerCase()}.`,
+    query: `${authority} ${title}`,
+  }));
+  const answered = /outdoor|footpath|indoors|inside|not sure|unsure/i.test(answer);
+  return {
+    steps,
+    question: answered
+      ? null
+      : {
+          key: 'outdoor',
+          text: 'Will any part of your project use the public footpath?',
+          reason: 'The public-space guidance treats outdoor furniture separately.',
+          options: ['Yes, some outdoor space', 'No, everything is indoors', 'Not sure yet'],
+        },
+  };
+}
 export function fixtureResearch(refined: boolean, answer: string): Infer<typeof researchResult> {
   const noOutdoor = /\bno\b|inside|indoor/i.test(answer);
   const unknownOutdoor = /not sure|unsure|unknown/i.test(answer);

@@ -174,7 +174,7 @@ After the local Convex app exists, install its CLI-managed AI files and read the
 5. **Clarify once:** ask up to three missing-fact questions that materially change applicability, usually one. Use retrieved evidence to choose questions. “Not sure” preserves uncertainty and allows progress.
 6. **Refine:** use up to two additional searches and a few extra pages to close important gaps. Deduplicate, establish simple prerequisites, and summarize remaining uncertainty.
 
-Default total for the full initial run, including refinement: **five searches, eight ordinary page scrapes, and six model invocations**. Enforce per-call context/output limits and an aggregate token budget. Transient retries are bounded and count toward run limits. Publish only what sources support; do not force a quota of requirements.
+Default total for the full initial run, including refinement: **twelve searches, twelve ordinary page scrapes, and eight model invocations**. A mail follow-up stays at two of each. Enforce per-call context/output limits and an aggregate token budget. Transient retries are bounded and count toward run limits. Publish only what sources support; do not force a quota of requirements.
 
 Editing an answer increments the project revision and starts a bounded refinement using existing sources. Obsolete runs cannot overwrite newer answers. A page refresh resumes the persisted workspace rather than issuing a new run. One research pass can finish with unresolved items.
 
@@ -234,12 +234,12 @@ Verified against official pages on 2026-09-13. These are published allowances, n
 | Service | Published allowance | MVP response |
 |---|---|---|
 | Convex Free | 1M function calls/month, 20 GB-hours action compute/month, 0.5 GB database, 1 GB files, 1 GB database I/O/month, 1 GB file egress/month | Compact sources, short actions, batched progress updates, small static bundle; no polling or monitoring. Static assets share storage/egress. [Limits](https://docs.convex.dev/production/state/limits). |
-| Firecrawl Free | 1,000 credits/month; basic scrape 1/page; search 2 per up-to-10 results | Five searches + eight basic HTML scrapes is about 18 credits. Reserve 25/run for retries/variance; avoid premium formats and broad crawls. [Pricing](https://www.firecrawl.dev/pricing), [search billing](https://docs.firecrawl.dev/features/search). |
+| Firecrawl Free | 1,000 credits/month; basic scrape 1/page; search 2 per up-to-10 results | Twelve searches + twelve basic HTML scrapes is about 36 credits. The investigation reads a few local accounts, then one official page per authority. Avoid premium formats and broad crawls. [Pricing](https://www.firecrawl.dev/pricing), [search billing](https://docs.firecrawl.dev/features/search). |
 | Firecrawl rates | Two concurrent browsers; search and scrape each list 10 requests/minute on Free | Shared endpoint throttles, at most two fetches, 429 backoff, one active research run at a time for this demo deployment. [Rate limits](https://docs.firecrawl.dev/rate-limits). |
 | AgentMail Free | Three inboxes, 3,000 emails/month, 100/day, 3 GB storage | Use one shared inbox for forwarded correspondence only. Auth v2 sends no login email, so its allowance is reserved for the mail demo and judging. [Pricing](https://www.agentmail.to/pricing). |
 | OpenAI API | Usage billing on the builder's account | One inexpensive model; bounded context/output; no paid built-in web search or embeddings |
 
-With a fresh Firecrawl balance, allocate approximately 200 credits to live integration/cross-country testing, 200 to rehearsal/filming, and the rest to judging. Recalculate from the actual balance when connected. A 25-credit ceiling gives roughly 40 capped runs from 1,000 credits before other usage. These are budgeting calculations, not unlimited availability.
+With a fresh Firecrawl balance, allocate approximately 200 credits to live integration/cross-country testing, 200 to rehearsal/filming, and the rest to judging. Recalculate from the actual balance when connected. A full run is about 36 credits, so 1,000 credits covers roughly 25 capped runs before other usage. These are budgeting calculations, not unlimited availability.
 
 Use basic markdown and selected retrieval, not automatic scraping of every search hit. Disable expensive extraction formats. Reuse source content during clarification and repeated views, keeping retrieval dates visible. Add a small daily deployment cap and per-user run cap so casual traffic cannot immediately exhaust the account.
 

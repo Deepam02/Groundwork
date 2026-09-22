@@ -3,9 +3,15 @@ import { internalMutation, internalQuery, mutation } from './_generated/server';
 import { internal } from './_generated/api';
 import type { Doc } from './_generated/dataModel';
 import schema from './schema';
-import { interpretation, researchResult, source, runState } from './lib/validators';
+import { interpretation, researchResult, source, runState, leadStep, question } from './lib/validators';
 import { requireProject } from './lib/access';
-import { validateEvidence, orderRequirements, latestByKey } from './lib/domain';
+import {
+  validateEvidence,
+  orderRequirements,
+  latestByKey,
+  shareAuthorityQueries,
+  supportingSentence,
+} from './lib/domain';
 import { startRun } from './lib/runs';
 import { workflow } from './lib/workflow';
 import { limits } from './lib/limits';
@@ -19,6 +25,7 @@ export const context = internalQuery({
     project: schema.doc('projects'),
     sources: v.array(schema.doc('sources')),
     questions: v.array(schema.doc('questions')),
+    requirements: v.array(schema.doc('requirements')),
   }),
   handler: async (ctx, args) => {
     const run = await ctx.db.get(args.runId);
@@ -35,7 +42,11 @@ export const context = internalQuery({
       .withIndex('by_projectId', (q) => q.eq('projectId', project._id))
       .order('desc')
       .take(12);
-    return { run, project, sources, questions: latestByKey(questions) };
+    const requirements = await ctx.db
+      .query('requirements')
+      .withIndex('by_projectId', (q) => q.eq('projectId', project._id))
+      .take(60);
+    return { run, project, sources, questions: latestByKey(questions), requirements };
   },
 });
 export const setStage = internalMutation({
@@ -64,7 +75,7 @@ export const reserve = internalMutation({
       throw new Error('This research revision is no longer active.');
     const cap = run.trigger.startsWith('mail:')
       ? { searches: 2, scrapes: 2, modelCalls: 2 }
-      : { searches: 5, scrapes: 8, modelCalls: 6 };
+      : { searches: 12, scrapes: 12, modelCalls: 8 };
     if (run[args.kind] >= cap[args.kind] || run.tokens >= 48_000)
       throw new Error('Research budget reached. Existing findings are saved.');
     await ctx.db.patch(run._id, { [args.kind]: run[args.kind] + 1 });
@@ -151,12 +162,184 @@ export const saveSource = internalMutation({
     return null;
   },
 });
+export const publishLeads = internalMutation({
+  args: {
+    runId: v.id('researchRuns'),
+    revision: v.number(),
+    steps: v.array(leadStep),
+    question: v.union(question, v.null()),
+  },
+  returns: v.object({ asked: v.boolean(), count: v.number() }),
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.runId);
+    const project = run && (await ctx.db.get(run.projectId));
+    if (!run || !project || project.revision !== args.revision) return { asked: false, count: 0 };
+    const existing = await ctx.db
+      .query('requirements')
+      .withIndex('by_projectId', (q) => q.eq('projectId', project._id))
+      .take(60);
+    const seen = new Set(existing.map((row) => row.key));
+    let added = 0;
+    for (const step of shareAuthorityQueries(args.steps).slice(0, 8)) {
+      const key = step.key
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9-]+/g, '-')
+        .replace(/^-|-$/g, '')
+        .slice(0, 40);
+      if (!key || seen.has(key) || existing.length + added >= 60) continue;
+      seen.add(key);
+      await ctx.db.insert('requirements', {
+        projectId: project._id,
+        key,
+        title: step.title.slice(0, 200),
+        authority: step.authority.slice(0, 200),
+        kind: step.kind.slice(0, 80) || 'Step',
+        applicability: 'checking',
+        reason: `Mentioned in a local account and not confirmed yet. ${step.reason}`.slice(0, 500),
+        nextAction: `Check ${step.authority} for the official page.`.slice(0, 300),
+        documents: [],
+        fee: null,
+        duration: null,
+        prerequisites: [],
+        evidence: [],
+        progress: 'not_started',
+        tasks: [],
+        events: [],
+        leadQuery: step.query.slice(0, 300),
+        updatedAt: Date.now(),
+      });
+      added++;
+    }
+    let asked = false;
+    if (args.question && !run.refined && added > 0) {
+      const questions = await ctx.db
+        .query('questions')
+        .withIndex('by_projectId', (q) => q.eq('projectId', project._id))
+        .take(12);
+      const prior = questions.find((item) => item.key === args.question?.key);
+      if (!prior) {
+        await ctx.db.insert('questions', {
+          ...args.question,
+          options: args.question.options.slice(0, 4),
+          projectId: project._id,
+          runId: run._id,
+        });
+        asked = true;
+      } else if (prior.answer === undefined) asked = true;
+    }
+    if (asked) {
+      await ctx.db.patch(project._id, { state: 'needs_answer', updatedAt: Date.now() });
+      await ctx.db.patch(run._id, {
+        state: 'needs_answer',
+        stage: 'One detail will change which steps apply',
+      });
+    } else if (added) {
+      await ctx.db.patch(run._id, { stage: 'Checking each step against the official page' });
+    }
+    return { asked, count: added };
+  },
+});
+export const confirmLead = internalMutation({
+  args: {
+    runId: v.id('researchRuns'),
+    revision: v.number(),
+    key: v.string(),
+    url: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.runId);
+    const project = run && (await ctx.db.get(run.projectId));
+    if (!run || !project || project.revision !== args.revision) return null;
+    const requirement = await ctx.db
+      .query('requirements')
+      .withIndex('by_projectId_and_key', (q) => q.eq('projectId', project._id).eq('key', args.key))
+      .unique();
+    if (!requirement) return null;
+    const stored = await ctx.db
+      .query('sources')
+      .withIndex('by_projectId_and_url', (q) => q.eq('projectId', project._id).eq('url', args.url))
+      .unique();
+    if (!stored?.official) {
+      await ctx.db.patch(requirement._id, {
+        applicability: 'needs_verification',
+        reason: 'The official page for this step could not be read. It still needs checking.',
+        evidence: [],
+        updatedAt: Date.now(),
+      });
+      return null;
+    }
+    const excerpt = supportingSentence(stored.text, [
+      requirement.title,
+      requirement.authority,
+      requirement.kind,
+    ]);
+    const checked = validateEvidence(
+      {
+        key: requirement.key,
+        title: requirement.title,
+        authority: stored.authority || requirement.authority,
+        kind: requirement.kind,
+        applicability: 'required',
+        reason: excerpt
+          ? `An official page from ${stored.authority || requirement.authority} describes this step.`
+          : 'We found an official page, but not a passage that states this step.',
+        nextAction: requirement.nextAction,
+        documents: [],
+        fee: null,
+        duration: null,
+        prerequisites: requirement.prerequisites,
+        evidence: excerpt ? [{ url: stored.url, excerpt, field: 'applicability' }] : [],
+      },
+      [stored],
+    );
+    await ctx.db.patch(requirement._id, {
+      authority: checked.authority,
+      applicability: checked.applicability,
+      reason: checked.reason,
+      evidence: checked.evidence,
+      documents: checked.documents,
+      fee: checked.fee,
+      duration: checked.duration,
+      prerequisites: checked.prerequisites,
+      updatedAt: Date.now(),
+    });
+    await ctx.db.patch(run._id, { stage: `Checked ${requirement.title}` });
+    return null;
+  },
+});
+export const settle = internalMutation({
+  args: { runId: v.id('researchRuns'), revision: v.number() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.runId);
+    const project = run && (await ctx.db.get(run.projectId));
+    if (!run || !project || project.revision !== args.revision) return null;
+    const rows = await ctx.db
+      .query('requirements')
+      .withIndex('by_projectId', (q) => q.eq('projectId', project._id))
+      .take(60);
+    const open = rows.some(
+      (row) => row.applicability === 'checking' || row.applicability === 'needs_verification',
+    );
+    const state = !rows.length ? 'failed' : open ? 'partial' : 'ready';
+    await ctx.db.patch(run._id, {
+      state,
+      stage: rows.length ? 'Your findings so far' : 'Research paused',
+      ...(rows.length ? {} : { error: 'Research budget reached. Existing findings are saved.' }),
+    });
+    await ctx.db.patch(project._id, { state, updatedAt: Date.now() });
+    return null;
+  },
+});
 export const applyResult = internalMutation({
   args: {
     runId: v.id('researchRuns'),
     revision: v.number(),
     result: researchResult,
     final: v.boolean(),
+    keepConfirmed: v.optional(v.boolean()),
   },
   returns: v.null(),
   handler: async (ctx, args) => {
@@ -177,7 +360,18 @@ export const applyResult = internalMutation({
     for (const row of rows) {
       if (cycle) row.prerequisites = [];
       const existing = existingRows.find((r) => r.key === row.key);
-      if (existing) await ctx.db.patch(existing._id, { ...row, updatedAt: Date.now() });
+      const keep =
+        args.keepConfirmed &&
+        existing?.applicability === 'required' &&
+        existing.evidence.length > 0 &&
+        row.applicability === 'needs_verification';
+      if (keep && existing) {
+        if (row.prerequisites.length)
+          await ctx.db.patch(existing._id, {
+            prerequisites: row.prerequisites,
+            updatedAt: Date.now(),
+          });
+      } else if (existing) await ctx.db.patch(existing._id, { ...row, updatedAt: Date.now() });
       else if (existingRows.length + added < 60) {
         await ctx.db.insert('requirements', {
           ...row,
@@ -196,7 +390,12 @@ export const applyResult = internalMutation({
       for (const previous of existingRows) {
         if (
           !rows.some((row) => row.key === previous.key) &&
-          previous.applicability !== 'needs_verification'
+          previous.applicability !== 'needs_verification' &&
+          !(
+            args.keepConfirmed &&
+            previous.applicability === 'required' &&
+            previous.evidence.length > 0
+          )
         ) {
           await ctx.db.patch(previous._id, {
             applicability: 'needs_verification',

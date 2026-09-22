@@ -9,6 +9,13 @@ import {
   admittedHosts,
   officialPages,
   latestByKey,
+  rejectedHost,
+  guidePages,
+  authorityQueries,
+  shareAuthorityQueries,
+  supportingSentence,
+  isBudgetError,
+  nextInvestigationPhase,
 } from '../../convex/lib/domain';
 import { verifySignature } from '../../convex/integrations/agentmail';
 import { requirement } from './fixtures';
@@ -31,6 +38,67 @@ describe('official source admission', () => {
       'consultant-blog.example.com',
     ]);
     expect(admittedHosts(['bbmp.gov.in'], [])).toEqual([]);
+  });
+  it('rejects forums and publishers as official hosts and still reads a reddit lead', () => {
+    expect(rejectedHost('https://www.reddit.com/r/smallbusiness/comments/1')).toBe(true);
+    expect(rejectedHost('https://www.facebook.com/SF/posts/1')).toBe(true);
+    expect(rejectedHost('https://bbmp.gov.in/trade-licence')).toBe(false);
+    expect(
+      guidePages([
+        { url: 'https://www.facebook.com/city/posts/1' },
+        { url: 'https://www.reddit.com/r/dublin/comments/1' },
+        { url: 'https://www.reddit.com/r/dublin/comments/2' },
+        { url: 'https://local-guide.example.com/cafe-permits' },
+      ]).map((page) => page.url),
+    ).toEqual([
+      'https://www.reddit.com/r/dublin/comments/1',
+      'https://local-guide.example.com/cafe-permits',
+    ]);
+  });
+  it('groups official searches by authority and resumes after the map', () => {
+    expect(
+      shareAuthorityQueries([
+        { authority: 'Planning office', query: 'first query' },
+        { authority: 'Planning Office', query: 'second query' },
+      ]).map((step) => step.query),
+    ).toEqual(['first query', 'first query']);
+    expect(authorityQueries(Array.from({ length: 8 }, (_, i) => ({
+      key: `step-${i}`,
+      authority: `Office ${i}`,
+      query: `query ${i}`,
+    }))).length).toBe(6);
+    expect(
+      nextInvestigationPhase({
+        location: 'Dublin',
+        activity: 'Café',
+        profilePending: false,
+        mapped: true,
+      }),
+    ).toBe('confirm');
+    expect(
+      nextInvestigationPhase({
+        location: 'Dublin',
+        activity: 'Café',
+        profilePending: false,
+        mapped: false,
+      }),
+    ).toBe('map');
+    expect(
+      nextInvestigationPhase({
+        location: '',
+        activity: 'Café',
+        profilePending: false,
+        mapped: false,
+      }),
+    ).toBe('profile');
+    expect(isBudgetError(new Error('Research budget reached. Existing findings are saved.'))).toBe(
+      true,
+    );
+    expect(
+      supportingSentence('A blog mentioned it. The planning office requires a review before work.', [
+        'planning office',
+      ]),
+    ).toBe('The planning office requires a review before work.');
   });
   it('drops unofficial pages before the scrape loop instead of padding the set', () => {
     const pages = [

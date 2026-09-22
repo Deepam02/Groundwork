@@ -66,6 +66,24 @@ export const interpretation = v.object({
   missing: v.union(v.string(), v.null()),
 });
 export const candidate = v.object({ url: v.string(), title: v.string(), description: v.string() });
+export const leadStep = v.object({
+  key: v.string(),
+  title: v.string(),
+  authority: v.string(),
+  kind: v.string(),
+  reason: v.string(),
+  query: v.string(),
+});
+export const procedure = v.object({
+  steps: v.array(leadStep),
+  question: v.union(question, v.null()),
+});
+export const officialPick = v.object({
+  key: v.string(),
+  url: v.string(),
+  title: v.string(),
+  authority: v.string(),
+});
 export const authorities = v.object({ hosts: v.array(v.string()), queries: v.array(v.string()) });
 export const mailChange = v.object({
   requirementKey: v.string(),

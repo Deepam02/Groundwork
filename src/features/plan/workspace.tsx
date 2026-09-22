@@ -133,9 +133,11 @@ export function Workspace() {
           <div>
             <strong>{run?.stage ?? 'Starting your research'}</strong>
             <p>
-              {data.sources.length
-                ? `${data.sources.length} sources read. Your plan is taking shape below.`
-                : 'Looking for the public guidance that matters to your project.'}
+              {data.requirements.some((row) => row.applicability === 'checking')
+                ? 'These steps came from local accounts. Official pages are being checked one at a time.'
+                : data.sources.some((source) => !source.official)
+                  ? 'Local accounts are in. The steps they describe will show up here.'
+                  : 'Starting with local accounts of how people get this kind of project approved.'}
             </p>
           </div>
           <LoaderCircle size={19} className="spin" />
@@ -185,7 +187,12 @@ export function Workspace() {
       ) : tab === 'inbox' ? (
         <InboxView project={project} />
       ) : (
-        <Plan data={data} onSelect={setSelectedId} running={running} />
+        <Plan
+          data={data}
+          onSelect={setSelectedId}
+          running={running}
+          stage={run?.stage ?? ''}
+        />
       )}
       <footer className="workspace-footer">
         <Leaf size={14} />
@@ -201,10 +208,12 @@ function Plan({
   data,
   onSelect,
   running,
+  stage,
 }: {
   data: WorkspaceData;
   onSelect: (id: string) => void;
   running: boolean;
+  stage: string;
 }) {
   const rows = orderRequirements(data.requirements).ordered;
   const required = rows.filter((r) => r.applicability === 'required');
@@ -304,8 +313,8 @@ function Plan({
             </div>
             <p>
               {running
-                ? 'Making sense of the details…'
-                : 'Your requirements will appear here once research completes.'}
+                ? stage || 'Reading local accounts of this process.'
+                : 'Nothing has been confirmed yet.'}
             </p>
           </div>
         )}
@@ -374,7 +383,12 @@ function Plan({
               </summary>
               {data.sources.map((source) => (
                 <a key={source._id} href={source.url} target="_blank" rel="noopener noreferrer">
-                  <span>{source.authority || source.title}</span>
+                  <span>
+                    <span className="source-kind">
+                      {source.official ? 'Official page' : 'Local account'}
+                    </span>
+                    {source.authority || source.title}
+                  </span>
                   <ArrowUpRight size={13} />
                 </a>
               ))}
@@ -451,7 +465,11 @@ function RequirementRow({
                 : 'neutral',
         )}
       >
-        {uncertain ? 'Needs checking' : progressLabels[row.progress]}
+        {row.applicability === 'checking'
+          ? 'Checking'
+          : uncertain
+            ? 'Needs checking'
+            : progressLabels[row.progress]}
       </span>
       <ChevronRight size={17} />
     </button>

@@ -115,11 +115,107 @@ describe('durable research boundaries', () => {
     expect(updated?.applicability).toBe('needs_verification');
   });
   it('enforces a persisted model-call cap', async () => {
-    for (let i = 0; i < 6; i++)
+    for (let i = 0; i < 8; i++)
       await t.mutation(internal.research.reserve, { runId: run, revision: 2, kind: 'modelCalls' });
     await expect(
       t.mutation(internal.research.reserve, { runId: run, revision: 2, kind: 'modelCalls' }),
     ).rejects.toThrow('budget');
+  });
+  it('stops at the search cap and leaves existing rows in place', async () => {
+    await t.run((ctx) => ctx.db.patch(project, { fixture: true }));
+    for (let i = 0; i < 12; i++)
+      await t.mutation(internal.research.reserve, { runId: run, revision: 2, kind: 'searches' });
+    await expect(
+      t.mutation(internal.research.reserve, { runId: run, revision: 2, kind: 'searches' }),
+    ).rejects.toThrow('budget');
+    expect((await t.run((ctx) => ctx.db.get(row)))?.applicability).toBe('required');
+  });
+  it('keeps the smaller cap for a mail follow-up', async () => {
+    await t.run(async (ctx) => {
+      await ctx.db.patch(project, { fixture: true });
+      await ctx.db.patch(run, { trigger: 'mail:outdoor seating rule' });
+    });
+    await t.mutation(internal.research.reserve, { runId: run, revision: 2, kind: 'searches' });
+    await t.mutation(internal.research.reserve, { runId: run, revision: 2, kind: 'searches' });
+    await expect(
+      t.mutation(internal.research.reserve, { runId: run, revision: 2, kind: 'searches' }),
+    ).rejects.toThrow('budget');
+  });
+  it('publishes a checking row from a local account without official evidence', async () => {
+    await t.run((ctx) => ctx.db.patch(run, { refined: false, state: 'researching' }));
+    const published = await t.mutation(internal.research.publishLeads, {
+      runId: run,
+      revision: 2,
+      question: {
+        key: 'outdoor',
+        text: 'Will any seating be outside?',
+        reason: 'Outdoor seating adds a separate permission.',
+        options: ['Yes', 'No'],
+      },
+      steps: [
+        {
+          key: 'fire',
+          title: 'Fire safety review',
+          authority: 'Fire department',
+          kind: 'Inspection',
+          reason: 'A neighbour had to book this before opening.',
+          query: 'Fire department fire safety review Example',
+        },
+      ],
+    });
+    expect(published).toEqual({ asked: true, count: 1 });
+    const fire = await t.run(async (ctx) =>
+      ctx.db
+        .query('requirements')
+        .withIndex('by_projectId_and_key', (q) => q.eq('projectId', project).eq('key', 'fire'))
+        .unique(),
+    );
+    expect(fire?.applicability).toBe('checking');
+    expect(fire?.evidence).toEqual([]);
+    expect(fire?.leadQuery).toBe('Fire department fire safety review Example');
+    expect((await t.run((ctx) => ctx.db.get(project)))?.state).toBe('needs_answer');
+  });
+  it('does not confirm a step from an unofficial page', async () => {
+    await t.mutation(internal.research.publishLeads, {
+      runId: run,
+      revision: 2,
+      question: null,
+      steps: [
+        {
+          key: 'fire',
+          title: 'Fire safety review',
+          authority: 'Fire department',
+          kind: 'Inspection',
+          reason: 'A neighbour had to book this before opening.',
+          query: 'Fire department fire safety review Example',
+        },
+      ],
+    });
+    await t.run((ctx) =>
+      ctx.db.insert('sources', {
+        projectId: project,
+        url: 'https://example.org/blog-fire',
+        title: 'A blog',
+        authority: 'Blog',
+        text: 'The Fire department requires a fire safety review before opening.',
+        official: false,
+        retrievedAt: 0,
+      }),
+    );
+    await t.mutation(internal.research.confirmLead, {
+      runId: run,
+      revision: 2,
+      key: 'fire',
+      url: 'https://example.org/blog-fire',
+    });
+    const fire = await t.run(async (ctx) =>
+      ctx.db
+        .query('requirements')
+        .withIndex('by_projectId_and_key', (q) => q.eq('projectId', project).eq('key', 'fire'))
+        .unique(),
+    );
+    expect(fire?.applicability).toBe('needs_verification');
+    expect(fire?.evidence).toEqual([]);
   });
 });
 describe('one shared inbox', () => {

@@ -75,6 +75,7 @@ export default defineSchema({
     progress,
     tasks: v.array(v.string()),
     events: v.array(event),
+    leadQuery: v.optional(v.string()),
     updatedAt: v.number(),
   })
     .index('by_projectId', ['projectId'])

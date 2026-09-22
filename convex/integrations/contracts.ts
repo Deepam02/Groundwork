@@ -13,6 +13,36 @@ export const authoritySchema = z.object({
   hosts: z.array(short).max(5),
   queries: z.array(short).max(3),
 });
+export const procedureSchema = z.object({
+  steps: z
+    .array(
+      z.object({
+        key: short,
+        title: short,
+        authority: short,
+        kind: short,
+        reason: text,
+        query: short,
+      }),
+    )
+    .max(8),
+  question: z
+    .object({ key: short, text, reason: text, options: z.array(short).max(4) })
+    .nullable(),
+});
+export const officialPickSchema = z.object({
+  pages: z
+    .array(
+      z.object({
+        key: short,
+        url: z.string(),
+        title: short,
+        authority: short,
+        official: z.boolean(),
+      }),
+    )
+    .max(8),
+});
 export const selectionSchema = z.object({
   pages: z
     .array(

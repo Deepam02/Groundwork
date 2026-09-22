@@ -11,6 +11,9 @@
     "jsx": "react-jsx",
     "skipLibCheck": true,
     "allowSyntheticDefaultImports": true,
+    /* auth.config.ts reads the built-in CONVEX_SITE_URL via process.env, which
+     * `convex deploy` typechecks with this config rather than the root one. */
+    "types": ["node"],
 
     /* These compiler options are required by Convex */
     "target": "ESNext",

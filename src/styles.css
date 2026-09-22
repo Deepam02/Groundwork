@@ -1401,6 +1401,12 @@ summary:focus-visible {
   color: #58684f;
   padding: 9px 0;
 }
+.source-kind {
+  display: block;
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
 .source-list a:hover {
   text-decoration: underline;
 }

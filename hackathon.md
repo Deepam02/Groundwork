@@ -3,16 +3,16 @@
 - **Project:** Groundwork
 - **Event:** Convex All Gas Hackathon
 - **What it does:** Investigates project-specific approvals and maintains a source-backed plan as research, answers, and correspondence change.
-- **Live app:** not deployed
+- **Live app:** https://steady-chipmunk-476.convex.site
 - **Repo:** https://github.com/Deepam02/Groundwork
 - **Frontend:** Convex static hosting
-- **Convex deployment:** not deployed
+- **Convex deployment:** https://steady-chipmunk-476.convex.cloud
 - **Components:** @convex-dev/auth, @convex-dev/agent, @convex-dev/workflow, @convex-dev/rate-limiter, @convex-dev/static-hosting
 - **Convex features:** schema, indexes, queries, mutations, actions, HTTP actions, realtime queries, durable workflows
 - **Auth:** Convex Auth
 - **AI models:** gpt-4.1-mini (configured through the direct OpenAI API; live inference pending credentials)
 - **Started:** 2026-09-13T07:47:38Z
-- **Last updated:** 2026-09-21T14:07:09Z
+- **Last updated:** 2026-09-22T12:32:06Z
 
 ## Log
 
@@ -59,3 +59,12 @@ Added `includeDomains`/`excludeDomains`/`limit` to the Firecrawl adapter, normal
 A run with no identifiable authority, or no confirmable official page, now ends with an explicit coverage gap instead of falling back to unofficial pages. Mail-triggered follow-ups previously read their top two search hits with `official` hardcoded to false; they go through the same gate now. Queries use jurisdiction and document words (permit, licence, registration, notification, circular, form, fee) and avoid explainer phrasing; official PDFs are selectable as primary sources, though OCR for scanned documents is still out of scope.
 Also fixed a redirect race that could drop the landing-page draft after sign-up, and refreshed `README.md`, `IMPLEMENTATION_PLAN.md`, and `CLAUDE.md` for the new routes and the opt-in fixture journey.
 Verification is `npm run verify` on this checkout: TypeScript, ESLint, 25 deterministic tests, and the production build. New tests cover domain-filter emission, exclusive filters, exact-host reuse, and unofficial pages being dropped before scraping. These are deterministic tests against documented response shapes, not live Firecrawl runs; the ranking improvement itself is unverified until keys are connected.
+
+### 2026-09-21 - working tree
+Published the app to the production deployment `steady-chipmunk-476` with `npm run deploy`: the frontend is built against the prod Convex URL, backend functions are pushed, and the static bundle is served from Convex static hosting at https://steady-chipmunk-476.convex.site. No index was deleted and the schema was unchanged, so no migration ran. The `/auth/.well-known/jwks.json` route and the site root both answer 200.
+Provider settings (OpenAI, Firecrawl, AgentMail) and the Auth v2 signing material were already configured on that deployment; the deploy did not read or change them. The first attempt failed because `convex deploy` typechecks with `convex/tsconfig.json`, which lacked Node types for the `process.env.CONVEX_SITE_URL` read in `convex/auth.config.ts`; adding `"types": ["node"]` there fixed it without changing any runtime behavior.
+Live behavior is still unverified: no research run, mail delivery, or account creation has been exercised against this deployment, so the official-source search path remains untested outside deterministic tests.
+
+### 2026-09-22 - working tree
+Replaced the government-first discovery pass with a staged investigation. A run asks for a missing city or activity before any search, reads local accounts to name the steps, publishes those steps immediately as checking, asks one branching question, then confirms each authority on an official page. Local accounts are leads: a step is confirmed only when an excerpt appears in an official source. Initial-run caps are 12 searches, 12 scrapes, and 8 model calls; a mail follow-up stays at 2 of each. Hitting the search or scrape cap stops that loop and keeps the rows already saved (`convex/workflows.ts`, `convex/inference.ts`, `convex/research.ts`, `convex/lib/domain.ts`, `src/features/plan/workspace.tsx`).
+Verification is `npm run verify` on this checkout: TypeScript, ESLint, 31 deterministic tests, and the production build. Tests cover unofficial pages not confirming a step, checking rows published before an official source exists, resuming past a finished map, and the search cap leaving existing rows in place. This is not a live Firecrawl run.
