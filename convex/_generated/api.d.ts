@@ -12,6 +12,7 @@ import type * as agent from "../agent.js";
 import type * as auth from "../auth.js";
 import type * as checks from "../checks.js";
 import type * as development from "../development.js";
+import type * as documents from "../documents.js";
 import type * as http from "../http.js";
 import type * as inbox from "../inbox.js";
 import type * as inference from "../inference.js";
@@ -25,6 +26,7 @@ import type * as lib_domain from "../lib/domain.js";
 import type * as lib_limits from "../lib/limits.js";
 import type * as lib_mode from "../lib/mode.js";
 import type * as lib_runs from "../lib/runs.js";
+import type * as lib_sources from "../lib/sources.js";
 import type * as lib_validators from "../lib/validators.js";
 import type * as lib_workflow from "../lib/workflow.js";
 import type * as mailActions from "../mailActions.js";
@@ -33,6 +35,7 @@ import type * as mailResearch from "../mailResearch.js";
 import type * as mailWorkflows from "../mailWorkflows.js";
 import type * as projects from "../projects.js";
 import type * as research from "../research.js";
+import type * as trail from "../trail.js";
 import type * as users from "../users.js";
 import type * as workflows from "../workflows.js";
 
@@ -47,6 +50,7 @@ declare const fullApi: ApiFromModules<{
   auth: typeof auth;
   checks: typeof checks;
   development: typeof development;
+  documents: typeof documents;
   http: typeof http;
   inbox: typeof inbox;
   inference: typeof inference;
@@ -60,6 +64,7 @@ declare const fullApi: ApiFromModules<{
   "lib/limits": typeof lib_limits;
   "lib/mode": typeof lib_mode;
   "lib/runs": typeof lib_runs;
+  "lib/sources": typeof lib_sources;
   "lib/validators": typeof lib_validators;
   "lib/workflow": typeof lib_workflow;
   mailActions: typeof mailActions;
@@ -68,6 +73,7 @@ declare const fullApi: ApiFromModules<{
   mailWorkflows: typeof mailWorkflows;
   projects: typeof projects;
   research: typeof research;
+  trail: typeof trail;
   users: typeof users;
   workflows: typeof workflows;
 }>;

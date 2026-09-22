@@ -11,14 +11,19 @@ import {
   latestByKey,
   shareAuthorityQueries,
   supportingSentence,
-  isSpecificDocument,
-  documentLinkLabel,
+  isActionablePage,
+  pageName,
+  classifySource,
+  readableArea,
 } from './lib/domain';
 import { startRun } from './lib/runs';
 import { workflow } from './lib/workflow';
 import { limits } from './lib/limits';
 import { createThread } from '@convex-dev/agent';
 import { components } from './_generated/api';
+
+const LEAD_PREFIX = 'Mentioned in a local account and not confirmed yet. ';
+const LEAD_HEDGE = new RegExp(`^${LEAD_PREFIX}`);
 
 export const context = internalQuery({
   args: { runId: v.id('researchRuns'), revision: v.number() },
@@ -149,18 +154,25 @@ export const saveSource = internalMutation({
       .unique();
     const value = {
       ...args.source,
+      kind: args.source.official
+        ? classifySource(args.source.url, args.source.title)
+        : ('lead' as const),
       text: args.source.text.slice(0, 9000),
       projectId: project._id,
       retrievedAt: Date.now(),
     };
+    let sourceId = existing?._id;
     if (existing) await ctx.db.patch(existing._id, value);
     else {
       const count = await ctx.db
         .query('sources')
         .withIndex('by_projectId', (q) => q.eq('projectId', project._id))
         .take(30);
-      if (count.length < 30) await ctx.db.insert('sources', value);
+      if (count.length < 30) sourceId = await ctx.db.insert('sources', value);
     }
+    // Warm the file before anyone clicks, so the viewer opens instantly on camera.
+    if (sourceId && value.official && !existing?.fileId)
+      await ctx.scheduler.runAfter(0, internal.documents.cacheDocument, { sourceId });
     return null;
   },
 });
@@ -198,7 +210,7 @@ export const publishLeads = internalMutation({
         authority: step.authority.slice(0, 200),
         kind: step.kind.slice(0, 80) || 'Step',
         applicability: 'checking',
-        reason: `Mentioned in a local account and not confirmed yet. ${step.reason}`.slice(0, 500),
+        reason: `${LEAD_PREFIX}${step.reason}`.slice(0, 500),
         nextAction: `Looking for the ${step.title} form or notification.`.slice(0, 300),
         documents: [],
         fee: null,
@@ -209,6 +221,7 @@ export const publishLeads = internalMutation({
         tasks: [],
         events: [],
         leadQuery: step.query.slice(0, 300),
+        stage: 'lead',
         updatedAt: Date.now(),
       });
       added++;
@@ -263,10 +276,10 @@ export const confirmLead = internalMutation({
       .query('sources')
       .withIndex('by_projectId_and_url', (q) => q.eq('projectId', project._id).eq('url', args.url))
       .unique();
-    if (!stored?.official || !isSpecificDocument(stored.url, stored.title)) {
+    if (!stored?.official || !isActionablePage(stored.url, stored.title)) {
       await ctx.db.patch(requirement._id, {
         applicability: 'checking',
-        reason: `${requirement.authority} does not have an application form or notification on this page yet.`,
+        reason: `${requirement.authority} does not have an application page or form on this page yet.`,
         evidence: [],
         updatedAt: Date.now(),
       });
@@ -277,21 +290,32 @@ export const confirmLead = internalMutation({
       requirement.authority,
       requirement.kind,
     ]);
-    const link = documentLinkLabel(stored.url);
+    const sourceKind = stored.kind ?? classifySource(stored.url, stored.title);
+    const authority = stored.authority || requirement.authority;
+    const name = pageName(stored.title, stored.url);
+    // The lead was written while the step was still a rumour. Now that an
+    // official page backs it, drop the hedge and keep the substance.
+    const why = requirement.reason.replace(LEAD_HEDGE, '').trim();
     const checked = validateEvidence(
       {
         key: requirement.key,
         title: requirement.title,
-        authority: stored.authority || requirement.authority,
+        authority,
         kind: requirement.kind,
         applicability: 'required',
         reason: excerpt
-          ? `${link} from ${stored.authority || requirement.authority}.`
+          ? why.length > 20
+            ? why
+            : `${authority} sets this out on its own page.`
           : 'We found an official page, but not a passage that states this step.',
-        nextAction: `${link}: ${stored.title}.`.slice(0, 300),
+        nextAction: (sourceKind === 'apply'
+          ? `Open ${name} on ${authority} and start the application.`
+          : `Read ${name} from ${authority}, then follow the steps it lists.`
+        ).slice(0, 300),
         documents: stored.url.toLowerCase().includes('.pdf') ? [stored.title.slice(0, 200)] : [],
         fee: null,
         duration: null,
+        applyUrl: sourceKind === 'apply' ? stored.url : null,
         prerequisites: requirement.prerequisites,
         evidence: excerpt ? [{ url: stored.url, excerpt, field: 'applicability' }] : [],
       },
@@ -306,6 +330,8 @@ export const confirmLead = internalMutation({
       fee: checked.fee,
       duration: checked.duration,
       prerequisites: checked.prerequisites,
+      ...(checked.applyUrl ? { applyUrl: checked.applyUrl } : {}),
+      stage: 'confirmed',
       updatedAt: Date.now(),
     });
     await ctx.db.patch(run._id, { stage: `Checked ${requirement.title}` });
@@ -348,21 +374,30 @@ export const retireUnchecked = internalMutation({
       .withIndex('by_projectId', (q) => q.eq('projectId', project._id))
       .take(60);
     const gaps = [...project.gaps];
+    // Nothing is deleted. A step that could not be confirmed is still something
+    // the user was told about, so it is marked and explained rather than erased.
     for (const row of rows) {
       if (row.applicability === 'not_applicable') continue;
-      if (row.evidence.some((item) => isSpecificDocument(item.url))) continue;
+      if (row.evidence.some((item) => isActionablePage(item.url))) continue;
       if (row.progress !== 'not_started' || row.tasks.length > 0 || row.events.length > 0) continue;
       const gap =
         row.applicability === 'required'
-          ? `${row.title} (${row.authority}) still applies, but no application form, notification, or circular was found yet.`
-          : `No application form, notification, or circular found yet for ${row.title} (${row.authority}).`;
+          ? `${row.title} (${row.authority}) still applies, but no application page or form was found yet.`
+          : `No application page or form found yet for ${row.title} (${row.authority}).`;
       if (!gaps.includes(gap)) gaps.push(gap);
-      await ctx.db.delete(row._id);
+      await ctx.db.patch(row._id, {
+        stage: 'dismissed',
+        applicability: 'needs_verification',
+        reason: `A local account named this step, but no official page from ${row.authority} confirmed it. Contact them directly.`,
+        updatedAt: Date.now(),
+      });
     }
-    const remaining = await ctx.db
-      .query('requirements')
-      .withIndex('by_projectId', (q) => q.eq('projectId', project._id))
-      .take(60);
+    const remaining = (
+      await ctx.db
+        .query('requirements')
+        .withIndex('by_projectId', (q) => q.eq('projectId', project._id))
+        .take(60)
+    ).filter((row) => row.stage !== 'dismissed');
     const open = remaining.some(
       (row) => row.applicability !== 'required' && row.applicability !== 'not_applicable',
     );
@@ -411,28 +446,42 @@ export const applyResult = internalMutation({
       const keptDocument =
         args.keepConfirmed &&
         existing?.applicability === 'required' &&
-        existing.evidence.some((item) => isSpecificDocument(item.url)) &&
+        existing.evidence.some((item) => isActionablePage(item.url)) &&
         row.applicability === 'required' &&
-        !row.evidence.some((item) => isSpecificDocument(item.url));
+        !row.evidence.some((item) => isActionablePage(item.url));
       const keep =
         args.keepConfirmed &&
         existing?.applicability === 'required' &&
         existing.evidence.length > 0 &&
         row.applicability === 'needs_verification';
+      // A step the synthesis settled on with real evidence has earned its place
+      // in the plan, even if it never went through the per-step document pass.
+      const settled =
+        row.evidence.length > 0 &&
+        (row.applicability === 'required' || row.applicability === 'not_applicable');
+      const { applyUrl, ...fields } = row;
       if ((keep || keptDocument) && existing) {
         if (row.prerequisites.length)
           await ctx.db.patch(existing._id, {
             prerequisites: row.prerequisites,
             updatedAt: Date.now(),
           });
-      } else if (existing) await ctx.db.patch(existing._id, { ...row, updatedAt: Date.now() });
+      } else if (existing)
+        await ctx.db.patch(existing._id, {
+          ...fields,
+          applyUrl: applyUrl ?? existing.applyUrl,
+          ...(settled ? { stage: 'confirmed' as const } : {}),
+          updatedAt: Date.now(),
+        });
       else if (existingRows.length + added < 60) {
         await ctx.db.insert('requirements', {
-          ...row,
+          ...fields,
+          ...(applyUrl ? { applyUrl } : {}),
           projectId: project._id,
           progress: 'not_started',
           tasks: [],
           events: [],
+          stage: settled ? 'confirmed' : 'lead',
           updatedAt: Date.now(),
         });
         added++;
@@ -470,7 +519,7 @@ export const applyResult = internalMutation({
         : 'ready';
     await ctx.db.patch(project._id, {
       summary: args.result.summary,
-      checked: args.result.checked.slice(0, 12),
+      checked: args.result.checked.slice(0, 12).map(readableArea),
       gaps: args.result.gaps.slice(0, 12),
       state,
       updatedAt: Date.now(),

@@ -39,8 +39,10 @@ beforeEach(async () => {
     });
     row = await ctx.db.insert('requirements', {
       ...requirement,
+      applyUrl: requirement.applyUrl ?? undefined,
       projectId: project,
       progress: 'done',
+      stage: 'confirmed',
       tasks: ['Preserve this task'],
       events: [],
       updatedAt: 0,
@@ -217,7 +219,7 @@ describe('durable research boundaries', () => {
     expect(fire?.applicability).toBe('checking');
     expect(fire?.evidence).toEqual([]);
   });
-  it('retires an unchecked step that has no form and keeps a step already in progress', async () => {
+  it('marks an unconfirmed step instead of deleting it, and keeps a step already in progress', async () => {
     await t.mutation(internal.research.publishLeads, {
       runId: run,
       revision: 2,
@@ -245,11 +247,46 @@ describe('durable research boundaries', () => {
         .withIndex('by_projectId', (q) => q.eq('projectId', project))
         .take(10),
     );
-    expect(remaining.map((item) => item.key).sort()).toEqual(['planning']);
+    // Nothing a user was shown is erased: the lead survives, marked and explained.
+    expect(remaining.map((item) => item.key).sort()).toEqual(['fire', 'planning']);
+    expect(remaining.find((item) => item.key === 'fire')?.stage).toBe('dismissed');
+    expect(remaining.find((item) => item.key === 'planning')?.stage).toBe('confirmed');
     expect((await t.run((ctx) => ctx.db.get(project)))?.gaps.join(' ')).toContain(
       'Fire safety review',
     );
     expect((await t.run((ctx) => ctx.db.get(row)))?.applicability).toBe('needs_verification');
+  });
+  it('records the research trail and caps it per run', async () => {
+    await t.mutation(internal.trail.append, {
+      runId: run,
+      revision: 2,
+      entries: [
+        { kind: 'phase', label: 'Reading how people actually did this' },
+        {
+          kind: 'candidate',
+          label: 'A consultant blog',
+          url: 'https://consultants.example.com/cafe-guide',
+          detail: 'Forum or publisher, not an authority',
+          verdict: 'rejected',
+        },
+      ],
+    });
+    const identity = t.withIdentity({ subject: owner });
+    const events = await identity.query(api.trail.forProject, { projectId: project });
+    expect(events.map((event) => event.kind)).toEqual(['phase', 'candidate']);
+    expect(events[1].host).toBe('consultants.example.com');
+    expect((await t.run((ctx) => ctx.db.get(run)))?.trailCount).toBe(2);
+    // A superseded revision must not be able to write into the current trail.
+    expect(
+      await t.mutation(internal.trail.append, {
+        runId: run,
+        revision: 1,
+        entries: [{ kind: 'phase', label: 'Stale' }],
+      }),
+    ).toEqual([]);
+    await expect(
+      t.withIdentity({ subject: other }).query(api.trail.forProject, { projectId: project }),
+    ).rejects.toThrow();
   });
 });
 describe('one shared inbox', () => {

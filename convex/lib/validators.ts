@@ -22,6 +22,34 @@ export const runState = v.union(
   v.literal('partial'),
   v.literal('failed'),
 );
+/** Where a step sits between "a local account mentioned it" and "an official page states it". */
+export const requirementStage = v.union(
+  v.literal('lead'),
+  v.literal('confirmed'),
+  v.literal('dismissed'),
+);
+export const sourceKind = v.union(
+  v.literal('apply'),
+  v.literal('form'),
+  v.literal('notice'),
+  v.literal('guidance'),
+  v.literal('lead'),
+);
+export const trailKind = v.union(
+  v.literal('phase'),
+  v.literal('thought'),
+  v.literal('search'),
+  v.literal('candidate'),
+  v.literal('read'),
+  v.literal('confirm'),
+  v.literal('gap'),
+);
+export const trailVerdict = v.union(
+  v.literal('accepted'),
+  v.literal('rejected'),
+  v.literal('running'),
+  v.literal('failed'),
+);
 export const evidence = v.object({ url: v.string(), excerpt: v.string(), field: v.string() });
 export const event = v.object({ label: v.string(), date: v.string(), source: v.string() });
 export const requirement = v.object({
@@ -37,6 +65,7 @@ export const requirement = v.object({
   duration: v.union(v.string(), v.null()),
   prerequisites: v.array(v.string()),
   evidence: v.array(evidence),
+  applyUrl: v.optional(v.union(v.string(), v.null())),
 });
 export const source = v.object({
   url: v.string(),
@@ -44,6 +73,7 @@ export const source = v.object({
   authority: v.string(),
   text: v.string(),
   official: v.boolean(),
+  kind: v.optional(sourceKind),
 });
 export const question = v.object({
   key: v.string(),
@@ -64,6 +94,8 @@ export const interpretation = v.object({
   activity: v.string(),
   queries: v.array(v.string()),
   missing: v.union(v.string(), v.null()),
+  /** One sentence of intent, shown as the first line of the research trail. */
+  plan: v.optional(v.string()),
 });
 export const candidate = v.object({ url: v.string(), title: v.string(), description: v.string() });
 export const leadStep = v.object({
@@ -83,6 +115,20 @@ export const officialPick = v.object({
   url: v.string(),
   title: v.string(),
   authority: v.string(),
+  kind: v.optional(sourceKind),
+});
+/** Picks plus the candidates that were turned down, so the trail can say why. */
+export const officialReview = v.object({
+  picks: v.array(officialPick),
+  rejected: v.array(v.object({ url: v.string(), title: v.string(), reason: v.string() })),
+});
+export const trailEntry = v.object({
+  kind: trailKind,
+  label: v.string(),
+  detail: v.optional(v.string()),
+  url: v.optional(v.string()),
+  verdict: v.optional(trailVerdict),
+  stepKey: v.optional(v.string()),
 });
 export const authorities = v.object({ hosts: v.array(v.string()), queries: v.array(v.string()) });
 export const mailChange = v.object({

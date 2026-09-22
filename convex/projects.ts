@@ -71,7 +71,7 @@ export const workspace = query({
     requirements: v.array(schema.doc('requirements')),
     questions: v.array(schema.doc('questions')),
     run: v.union(schema.doc('researchRuns'), v.null()),
-    sources: v.array(schema.doc('sources').omit('text')),
+    sources: v.array(schema.doc('sources').omit('text', 'fileId')),
     activity: v.array(schema.doc('activity')),
   }),
   handler: async (ctx, { projectId }) => {
@@ -106,6 +106,7 @@ export const workspace = query({
       requirements,
       questions: latestByKey(questions),
       run,
+      // Page text is deliberately withheld here; the viewer fetches one source at a time.
       sources: sources.map((s) => ({
         _id: s._id,
         _creationTime: s._creationTime,
@@ -114,6 +115,7 @@ export const workspace = query({
         title: s.title,
         authority: s.authority,
         official: s.official,
+        kind: s.kind,
         retrievedAt: s.retrievedAt,
       })),
       activity,

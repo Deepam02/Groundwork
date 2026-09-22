@@ -1,6 +1,17 @@
 import { defineSchema, defineTable } from 'convex/server';
 import { v } from 'convex/values';
-import { applicability, event, evidence, mailChange, progress, runState } from './lib/validators';
+import {
+  applicability,
+  event,
+  evidence,
+  mailChange,
+  progress,
+  requirementStage,
+  runState,
+  sourceKind,
+  trailKind,
+  trailVerdict,
+} from './lib/validators';
 
 export default defineSchema({
   users: defineTable({
@@ -44,6 +55,8 @@ export default defineSchema({
     refined: v.boolean(),
     error: v.optional(v.string()),
     trigger: v.string(),
+    /** Cheap cap for the research trail; avoids counting rows on every append. */
+    trailCount: v.optional(v.number()),
   })
     .index('by_projectId', ['projectId'])
     .index('by_state', ['state']),
@@ -54,10 +67,28 @@ export default defineSchema({
     authority: v.string(),
     text: v.string(),
     official: v.boolean(),
+    kind: v.optional(sourceKind),
+    /** Set once a PDF has been copied into Convex storage so it can be embedded. */
+    fileId: v.optional(v.id('_storage')),
     retrievedAt: v.number(),
   })
     .index('by_projectId', ['projectId'])
     .index('by_projectId_and_url', ['projectId', 'url']),
+  researchEvents: defineTable({
+    projectId: v.id('projects'),
+    runId: v.id('researchRuns'),
+    revision: v.number(),
+    kind: trailKind,
+    label: v.string(),
+    detail: v.optional(v.string()),
+    url: v.optional(v.string()),
+    host: v.optional(v.string()),
+    verdict: v.optional(trailVerdict),
+    stepKey: v.optional(v.string()),
+    timestamp: v.number(),
+  })
+    .index('by_projectId', ['projectId'])
+    .index('by_runId', ['runId']),
   requirements: defineTable({
     projectId: v.id('projects'),
     key: v.string(),
@@ -76,6 +107,10 @@ export default defineSchema({
     tasks: v.array(v.string()),
     events: v.array(event),
     leadQuery: v.optional(v.string()),
+    /** Where the page to act on lives, when the authority publishes one. */
+    applyUrl: v.optional(v.string()),
+    /** Absent on rows written before leads were tracked; those are confirmed. */
+    stage: v.optional(requirementStage),
     updatedAt: v.number(),
   })
     .index('by_projectId', ['projectId'])

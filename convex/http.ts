@@ -1,5 +1,6 @@
 import { httpRouter } from 'convex/server';
 import { httpAction, env } from './_generated/server';
+import type { Id } from './_generated/dataModel';
 import { components, internal } from './_generated/api';
 import { registerStaticRoutes } from '@convex-dev/static-hosting';
 import { verifySignature } from './integrations/agentmail';
@@ -41,6 +42,35 @@ http.route({
       messageId: payload.message.message_id,
     });
     return new Response('Accepted', { status: 200 });
+  }),
+});
+/**
+ * Serves a cached official PDF from this deployment so it can be embedded next
+ * to the claim it supports. The file is a public government document that was
+ * fetched from a public URL, and the storage ID is unguessable, so this route
+ * is deliberately unauthenticated — an iframe cannot carry a session token.
+ */
+http.route({
+  path: '/document',
+  method: 'GET',
+  handler: httpAction(async (ctx, request) => {
+    const id = new URL(request.url).searchParams.get('id');
+    if (!id || id.length > 200) return new Response('Not found', { status: 404 });
+    let file: Blob | null;
+    try {
+      file = await ctx.storage.get(id as Id<'_storage'>);
+    } catch {
+      return new Response('Not found', { status: 404 });
+    }
+    if (!file) return new Response('Not found', { status: 404 });
+    return new Response(file, {
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': 'inline',
+        'Cache-Control': 'public, max-age=3600',
+        'X-Content-Type-Options': 'nosniff',
+      },
+    });
   }),
 });
 registerStaticRoutes(http, components.staticHosting);

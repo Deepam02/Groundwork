@@ -15,6 +15,7 @@ export function fixtureInterpret(description: string): Infer<typeof interpretati
     title: activity,
     location,
     activity,
+    plan: `Finding which approvals ${location} requires for ${activity.toLowerCase()}, starting from what other owners actually filed.`,
     queries: [
       `${location} ${activity} permit process reddit`,
       `${location} ${activity} what permits did you need`,

@@ -6,5 +6,7 @@ export const limits = new RateLimiter(components.rateLimiter, {
   globalRuns: { kind: 'fixed window', rate: 20, period: DAY },
   mail: { kind: 'fixed window', rate: 20, period: DAY },
   connect: { kind: 'fixed window', rate: 5, period: HOUR },
-  firecrawl: { kind: 'token bucket', rate: 8, period: MINUTE, capacity: 1 },
+  // Firecrawl Free documents 10 requests/minute. Capacity lets a run open with a
+  // burst instead of pacing the first five calls 7.5s apart.
+  firecrawl: { kind: 'token bucket', rate: 10, period: MINUTE, capacity: 5 },
 });

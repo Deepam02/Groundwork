@@ -6,6 +6,7 @@ export const interpretationSchema = z.object({
   title: short,
   location: short,
   activity: short,
+  plan: text,
   queries: z.array(short).max(3),
   missing: text.nullable(),
 });
@@ -30,6 +31,7 @@ export const procedureSchema = z.object({
     .object({ key: short, text, reason: text, options: z.array(short).max(4) })
     .nullable(),
 });
+export const sourceKindSchema = z.enum(['apply', 'form', 'notice', 'guidance', 'lead']);
 export const officialPickSchema = z.object({
   pages: z
     .array(
@@ -38,10 +40,14 @@ export const officialPickSchema = z.object({
         url: z.string(),
         title: short,
         authority: short,
+        kind: sourceKindSchema,
         official: z.boolean(),
       }),
     )
     .max(8),
+  rejected: z
+    .array(z.object({ url: z.string(), title: short, reason: short }))
+    .max(10),
 });
 export const selectionSchema = z.object({
   pages: z
@@ -76,6 +82,7 @@ export const researchSchema = z.object({
         documents: z.array(short).max(8),
         fee: short.nullable(),
         duration: short.nullable(),
+        applyUrl: z.string().nullable(),
         prerequisites: z.array(short).max(6),
         evidence: z
           .array(

@@ -19,6 +19,13 @@ import {
   bestDocument,
   isHomepage,
   isSpecificDocument,
+  isActionablePage,
+  classifySource,
+  documentScore,
+  documentLinkLabel,
+  pageName,
+  trimPageChrome,
+  rejectionReason,
   documentQuery,
   candidatesForStep,
 } from '../../convex/lib/domain';
@@ -97,10 +104,18 @@ describe('official source admission', () => {
     expect(isHomepage(home.url)).toBe(true);
     expect(isSpecificDocument(form.url, form.title)).toBe(true);
     expect(isSpecificDocument('https://example.com/blog/how-to-apply', 'How to apply')).toBe(false);
+    // The first pass looks for somewhere to apply; only the retry chases a document.
     expect(
       documentQuery(
         { title: 'Trade licence', authority: 'SDMC', query: 'SDMC trade licence' },
         'South Delhi',
+      ),
+    ).toContain('apply online');
+    expect(
+      documentQuery(
+        { title: 'Trade licence', authority: 'SDMC', query: 'SDMC trade licence' },
+        'South Delhi',
+        'document',
       ),
     ).toContain('application form');
     expect(
@@ -141,6 +156,102 @@ describe('official source admission', () => {
         'planning office',
       ]),
     ).toBe('The planning office requires a review before work.');
+  });
+  it('ranks a page you can apply on above the PDF that merely describes the rule', () => {
+    const portal = {
+      url: 'https://www.localgov.ie/en/service/apply-for-food-business-registration',
+      title: 'Apply for food business registration',
+      description: 'Start your application online.',
+    };
+    const formPdf = {
+      url: 'https://www.localgov.ie/files/food-business-registration-form.pdf',
+      title: 'Food business registration form',
+      description: 'Downloadable application form',
+    };
+    const circular = {
+      url: 'https://www.localgov.ie/files/circular-2011-food.pdf',
+      title: 'Circular 14/2011 on food premises',
+      description: 'Notification to local authorities',
+    };
+    expect(classifySource(portal.url, portal.title)).toBe('apply');
+    expect(classifySource(formPdf.url, formPdf.title)).toBe('form');
+    expect(classifySource(circular.url, circular.title)).toBe('notice');
+    expect(classifySource('https://www.reddit.com/r/dublin/1', 'A thread')).toBe('lead');
+    expect(documentScore(portal)).toBeGreaterThan(documentScore(formPdf));
+    expect(documentScore(formPdf)).toBeGreaterThan(documentScore(circular));
+    expect(bestDocument([circular, formPdf, portal])?.url).toBe(portal.url);
+    // A service page with none of the old document words is now citable.
+    expect(isActionablePage(portal.url, portal.title)).toBe(true);
+    expect(isActionablePage('https://www.localgov.ie/en/news/new-food-rules', 'New food rules')).toBe(
+      false,
+    );
+    expect(rejectionReason('https://www.reddit.com/r/dublin/1')).toBe(
+      'Forum or publisher, not an authority',
+    );
+    expect(rejectionReason('https://www.localgov.ie/')).toBe(
+      'Department home page, not the application',
+    );
+    expect(rejectionReason(portal.url, portal.title)).toBeNull();
+    expect(documentLinkLabel(portal.url, portal.title)).toBe('Open the application page');
+    expect(documentLinkLabel(formPdf.url, formPdf.title)).toBe('Open the form (PDF)');
+  });
+  it('searches for the step rather than pasting back a URL the model suggested', () => {
+    const step = {
+      title: 'Business insurance',
+      authority: 'Central Bank of Ireland',
+      query: 'https://www.centralbank.ie/consumers/insurance/business-insurance',
+    };
+    const query = documentQuery(step, 'Dublin, Ireland');
+    expect(query).not.toContain('https://');
+    expect(query).toContain('Central Bank of Ireland');
+    expect(query).toContain('Business insurance');
+  });
+  it('reads a page by its own name and skips the navigation above its content', () => {
+    expect(pageName('Apply for a Street Furniture Licence | Dublin City Council')).toBe(
+      'Apply for a Street Furniture Licence',
+    );
+    expect(pageName('Registering for tax - Revenue')).toBe('Registering for tax');
+    // Nothing worth stripping, and nothing that leaves a stub behind.
+    expect(pageName('Trade licence')).toBe('Trade licence');
+    expect(pageName('FAQ | Dublin City Council')).toBe('FAQ | Dublin City Council');
+
+    const body = `The council issues a street furniture licence to any café that places tables and chairs on the public footpath outside its premises.`;
+    const page = [
+      'Skip to main content',
+      '[Search](/search) [Advanced Search](/advanced)',
+      '## Quick Links',
+      '## Services and Information',
+      '# Apply for a Street Furniture Licence',
+      body,
+      body,
+      body,
+    ].join('\n');
+    const trimmed = trimPageChrome(page);
+    expect(trimmed.startsWith('# Apply for a Street Furniture Licence')).toBe(true);
+    expect(trimmed).not.toContain('Skip to main content');
+    expect(trimmed).not.toContain('Quick Links');
+    // A page that is mostly navigation is left alone rather than gutted.
+    expect(trimPageChrome('Skip to main content\n## Quick Links\n[Home](/)')).toBe(
+      'Skip to main content\n## Quick Links\n[Home](/)',
+    );
+  });
+  it('only trusts an apply link that points at a stored official source', () => {
+    const sources = [
+      {
+        url: 'https://www.localgov.ie/en/service/apply-for-registration',
+        title: 'Apply for registration',
+        authority: 'Local authority',
+        text: requirement.evidence[0].excerpt,
+        official: true,
+      },
+    ];
+    expect(
+      validateEvidence({ ...requirement, applyUrl: sources[0].url }, sources).applyUrl,
+    ).toBe(sources[0].url);
+    expect(
+      validateEvidence({ ...requirement, applyUrl: 'https://www.localgov.ie/invented' }, sources)
+        .applyUrl,
+    ).toBeNull();
   });
   it('matches each fixture step to its own application form', () => {
     const hits = fixtureSources.map((source) => ({
