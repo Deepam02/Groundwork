@@ -3,7 +3,15 @@ import { internalMutation, internalQuery, mutation } from './_generated/server';
 import { internal } from './_generated/api';
 import type { Doc } from './_generated/dataModel';
 import schema from './schema';
-import { interpretation, researchResult, source, runState, leadStep, question } from './lib/validators';
+import {
+  interpretation,
+  researchResult,
+  source,
+  runState,
+  leadStep,
+  question,
+  sourceKind,
+} from './lib/validators';
 import { requireProject } from './lib/access';
 import {
   validateEvidence,
@@ -12,6 +20,7 @@ import {
   shareAuthorityQueries,
   supportingSentence,
   isActionablePage,
+  isHomepage,
   pageName,
   classifySource,
   readableArea,
@@ -24,6 +33,7 @@ import { components } from './_generated/api';
 
 const LEAD_PREFIX = 'Mentioned in a local account and not confirmed yet. ';
 const LEAD_HEDGE = new RegExp(`^${LEAD_PREFIX}`);
+const LEAD_ACTION = /^Looking for the /;
 
 export const context = internalQuery({
   args: { runId: v.id('researchRuns'), revision: v.number() },
@@ -255,6 +265,52 @@ export const publishLeads = internalMutation({
     return { asked, count: added };
   },
 });
+/**
+ * The authority's own page was identified, but it would not open to an
+ * automated reader — government portals block them routinely. Dropping the step
+ * would be the wrong answer twice over: we know the step is real and we know
+ * where it is filed. Keep it, hand over the link, and be plain that the detail
+ * on the page is unread rather than pretending to evidence we do not have.
+ */
+export const attachUnread = internalMutation({
+  args: {
+    runId: v.id('researchRuns'),
+    revision: v.number(),
+    key: v.string(),
+    url: v.string(),
+    title: v.string(),
+    authority: v.string(),
+    kind: sourceKind,
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.runId);
+    const project = run && (await ctx.db.get(run.projectId));
+    if (!run || !project || project.revision !== args.revision) return null;
+    const requirement = await ctx.db
+      .query('requirements')
+      .withIndex('by_projectId_and_key', (q) => q.eq('projectId', project._id).eq('key', args.key))
+      .unique();
+    if (!requirement) return null;
+    const authority = args.authority || requirement.authority;
+    const name = pageName(args.title, args.url);
+    const why = requirement.reason.replace(LEAD_HEDGE, '').trim();
+    await ctx.db.patch(requirement._id, {
+      authority,
+      applicability: 'needs_verification',
+      reason: why.length > 20 ? why : `${authority} handles this step.`,
+      nextAction: `Open ${name} on ${authority}. We could not read the page automatically, so check the fee and documents there yourself.`.slice(
+        0,
+        300,
+      ),
+      evidence: [],
+      ...(args.kind === 'apply' || args.kind === 'form' ? { applyUrl: args.url } : {}),
+      stage: 'confirmed',
+      updatedAt: Date.now(),
+    });
+    return null;
+  },
+});
 export const confirmLead = internalMutation({
   args: {
     runId: v.id('researchRuns'),
@@ -276,7 +332,9 @@ export const confirmLead = internalMutation({
       .query('sources')
       .withIndex('by_projectId_and_url', (q) => q.eq('projectId', project._id).eq('url', args.url))
       .unique();
-    if (!stored?.official || !isActionablePage(stored.url, stored.title)) {
+    // The officiality review already judged this the page that settles the step.
+    // Only a bare department home page is still refused here.
+    if (!stored?.official || isHomepage(stored.url)) {
       await ctx.db.patch(requirement._id, {
         applicability: 'checking',
         reason: `${requirement.authority} does not have an application page or form on this page yet.`,
@@ -378,6 +436,10 @@ export const retireUnchecked = internalMutation({
     // the user was told about, so it is marked and explained rather than erased.
     for (const row of rows) {
       if (row.applicability === 'not_applicable') continue;
+      // This retires leads that were never settled. A step the confirm pass
+      // already held against the authority's own page is not a lead any more,
+      // even when the page itself refused to be read.
+      if (row.stage === 'confirmed' || row.applyUrl) continue;
       if (row.evidence.some((item) => isActionablePage(item.url))) continue;
       if (row.progress !== 'not_started' || row.tasks.length > 0 || row.events.length > 0) continue;
       const gap =
@@ -461,16 +523,22 @@ export const applyResult = internalMutation({
         (row.applicability === 'required' || row.applicability === 'not_applicable');
       const { applyUrl, ...fields } = row;
       if ((keep || keptDocument) && existing) {
-        if (row.prerequisites.length)
+        // Keeping the earlier evidence must not also keep the wording written
+        // while the step was still a rumour.
+        const stale = LEAD_ACTION.test(existing.nextAction);
+        if (row.prerequisites.length || stale)
           await ctx.db.patch(existing._id, {
-            prerequisites: row.prerequisites,
+            ...(row.prerequisites.length ? { prerequisites: row.prerequisites } : {}),
+            ...(stale ? { nextAction: row.nextAction, reason: row.reason } : {}),
             updatedAt: Date.now(),
           });
       } else if (existing)
         await ctx.db.patch(existing._id, {
           ...fields,
           applyUrl: applyUrl ?? existing.applyUrl,
-          ...(settled ? { stage: 'confirmed' as const } : {}),
+          // The confirm pass already held this step against the authority's own
+          // page. A synthesis that merely fails to restate it must not unmake it.
+          ...(settled || existing.stage === 'confirmed' ? { stage: 'confirmed' as const } : {}),
           updatedAt: Date.now(),
         });
       else if (existingRows.length + added < 60) {

@@ -144,7 +144,12 @@ export function Workspace() {
               onSelect={openStep}
             />
           ) : pane === 'trail' ? (
-            <ResearchTrail events={events} running={running} stage={run?.stage ?? ''} />
+            <ResearchTrail
+              events={events}
+              running={running}
+              stage={run?.stage ?? ''}
+              onDone={openOverview}
+            />
           ) : (
             <Overview data={data} onSelect={openStep} onTrail={openTrail} />
           )}

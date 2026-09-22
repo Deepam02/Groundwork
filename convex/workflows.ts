@@ -10,6 +10,7 @@ import {
   candidatesForStep,
   rankDocuments,
   isActionablePage,
+  rejectedHost,
   rejectionReason,
   classifySource,
   sourceKindLabels,
@@ -87,6 +88,9 @@ export const researchFlow = workflow
       async function logCandidates(hits: Infer<typeof candidate>[], stepKey?: string) {
         const entries: Infer<typeof trailEntry>[] = [];
         for (const hit of hits.slice(0, 5)) {
+          // Only what is genuinely dropped here. Everything else goes to the
+          // officiality review, which logs its own rejections with better reasons.
+          if (!rejectedHost(hit.url)) continue;
           const reason = rejectionReason(hit.url, hit.title);
           if (!reason) continue;
           entries.push({
@@ -415,7 +419,25 @@ export const researchFlow = workflow
           },
         });
         if (!source) {
-          await settle(logged, 'failed', 'This page could not be read');
+          // The page is the authority's own and we know where it is. Losing the
+          // step because a portal blocks readers would throw away a right answer.
+          await settle(logged, 'failed', 'Official page found, but it would not open to a reader');
+          await step.runMutation(internal.research.attachUnread, {
+            ...args,
+            key: pick.key,
+            url: pick.url,
+            title: pick.title,
+            authority: pick.authority || row.authority,
+            kind,
+          });
+          await trail({
+            kind: 'confirm',
+            label: row.title,
+            detail: `${pick.authority || row.authority} · link handed over, page unread`,
+            url: pick.url,
+            verdict: 'accepted',
+            stepKey: pick.key,
+          });
           return true;
         }
         await settle(logged, 'accepted', sourceKindLabels[kind]);

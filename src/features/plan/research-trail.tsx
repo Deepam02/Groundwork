@@ -1,5 +1,14 @@
-import { useEffect, useRef } from 'react';
-import { Check, CircleHelp, ExternalLink, LoaderCircle, Search, Sparkles, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import {
+  Check,
+  ChevronRight,
+  CircleHelp,
+  ExternalLink,
+  LoaderCircle,
+  Search,
+  Sparkles,
+  X,
+} from 'lucide-react';
 import { hostOf, type ResearchEvent } from './types';
 
 /**
@@ -7,76 +16,163 @@ import { hostOf, type ResearchEvent } from './types';
  * candidates it turned down and why. The rejections are the point: they are the
  * difference between a system that reads official pages and one that sounds
  * like it did.
+ *
+ * A run makes a few hundred decisions, so this is not a log. Finished stages
+ * fold to a single line with their tally, only the stage in progress is open,
+ * and the pages that were turned down sit behind one disclosure instead of
+ * pushing the live work off the screen.
  */
 export function ResearchTrail({
   events,
   running,
   stage,
+  onDone,
 }: {
   events: ResearchEvent[] | undefined;
   running: boolean;
   stage: string;
+  onDone: () => void;
 }) {
-  const endRef = useRef<HTMLDivElement>(null);
-  const count = events?.length ?? 0;
-  useEffect(() => {
-    if (!running || !endRef.current) return;
-    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    endRef.current.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'end' });
-  }, [count, running]);
+  const stages = groupIntoStages(events ?? []);
+  const tally = summarize(events ?? []);
 
   return (
     <div className="trail">
       <header className="pane-head">
-        <p className="pane-kicker">How this was researched</p>
-        <h2>
-          {running ? stage || 'Looking into your project' : 'Every step of the investigation'}
-        </h2>
+        <h2>{running ? stage || 'Looking into your project' : 'How this plan was researched'}</h2>
         <p className="pane-lede">
-          Each search, each page considered, and the reason anything was turned down. Official
+          Every search, every page considered, and the reason anything was turned down. Official
           pages only — a blog that happens to be right is still not evidence.
         </p>
       </header>
-      <ol className="trail-list" role="log" aria-live="polite" aria-busy={running}>
-        {events === undefined ? (
-          <li className="trail-loading">Opening the research log…</li>
-        ) : events.length === 0 ? (
-          <li className="trail-loading">
-            {running ? 'Starting the first search…' : 'No research has run for this project yet.'}
-          </li>
-        ) : (
-          events.map((event) => <TrailRow key={event._id} event={event} />)
-        )}
-      </ol>
-      <div ref={endRef} />
-      {running && (
-        <p className="trail-foot">
-          <LoaderCircle size={14} className="spin" />
-          Research is running. Steps appear on the left as they are confirmed.
+
+      <TrailMeter tally={tally} running={running} />
+
+      {events === undefined ? (
+        <p className="trail-loading">Opening the research log…</p>
+      ) : stages.length === 0 ? (
+        <p className="trail-loading">
+          {running ? 'Starting the first search…' : 'No research has run for this project yet.'}
         </p>
+      ) : (
+        <div className="trail-stages">
+          {stages.map((group, index) => (
+            <Stage
+              key={group.id}
+              group={group}
+              live={running && index === stages.length - 1}
+              last={index === stages.length - 1}
+            />
+          ))}
+        </div>
+      )}
+
+      {!running && events !== undefined && events.length > 0 && (
+        <button className="trail-done" onClick={onDone}>
+          <Check size={15} />
+          <span>
+            <strong>Research complete</strong>
+            <small>
+              {tally.reads} official {tally.reads === 1 ? 'page' : 'pages'} read, {tally.confirmed}{' '}
+              {tally.confirmed === 1 ? 'step' : 'steps'} confirmed. See the plan.
+            </small>
+          </span>
+          <ChevronRight size={18} />
+        </button>
       )}
     </div>
   );
 }
 
-function TrailRow({ event }: { event: ResearchEvent }) {
-  if (event.kind === 'phase')
-    return (
-      <li className="trail-phase">
-        <span>{event.label}</span>
-      </li>
-    );
+/** The four numbers that show the work is going somewhere while it runs. */
+function TrailMeter({ tally, running }: { tally: Tally; running: boolean }) {
+  return (
+    <dl className="trail-meter" aria-live="polite">
+      <div>
+        <dt>Searches</dt>
+        <dd>{tally.searches}</dd>
+      </div>
+      <div>
+        <dt>Pages weighed</dt>
+        <dd>{tally.considered}</dd>
+      </div>
+      <div>
+        <dt>Turned down</dt>
+        <dd>{tally.rejected}</dd>
+      </div>
+      <div className="is-lead">
+        <dt>Confirmed</dt>
+        <dd>
+          {tally.confirmed}
+          {running && <LoaderCircle size={13} className="spin" aria-label="Still running" />}
+        </dd>
+      </div>
+    </dl>
+  );
+}
 
+function Stage({ group, live, last }: { group: Group; live: boolean; last: boolean }) {
+  const [open, setOpen] = useState<boolean | null>(null);
+  const endRef = useRef<HTMLDivElement>(null);
+  // Open while it is the stage being worked on, or the final stage once the run
+  // has stopped; a reader arriving afterwards should land on the outcome.
+  const shown = open ?? (live || (last && !live));
+
+  useEffect(() => {
+    if (!live || !endRef.current) return;
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    endRef.current.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'end' });
+  }, [live, group.rows.length]);
+
+  const kept = group.rows.filter((event) => event.verdict !== 'rejected');
+  const turned = group.rows.filter((event) => event.verdict === 'rejected');
+
+  return (
+    <section className={`trail-stage${shown ? ' is-open' : ''}${live ? ' is-live' : ''}`}>
+      <button className="trail-stage-head" onClick={() => setOpen(!shown)} aria-expanded={shown}>
+        <span className="trail-stage-mark">
+          {live ? <LoaderCircle size={14} className="spin" /> : <Check size={14} />}
+        </span>
+        <span className="trail-stage-title">{group.label}</span>
+        <span className="trail-stage-tally">{describe(group)}</span>
+        <ChevronRight size={15} className="trail-chevron" />
+      </button>
+
+      {shown && (
+        <div className="trail-stage-body">
+          <ol className="trail-list" role="log" aria-live={live ? 'polite' : 'off'}>
+            {kept.map((event) => (
+              <TrailRow key={event._id} event={event} />
+            ))}
+          </ol>
+          {turned.length > 0 && (
+            <details className="trail-turned">
+              <summary>
+                <X size={13} />
+                {turned.length} {turned.length === 1 ? 'page' : 'pages'} turned down
+              </summary>
+              <ol className="trail-list">
+                {turned.map((event) => (
+                  <TrailRow key={event._id} event={event} />
+                ))}
+              </ol>
+            </details>
+          )}
+          <div ref={endRef} />
+        </div>
+      )}
+    </section>
+  );
+}
+
+function TrailRow({ event }: { event: ResearchEvent }) {
   if (event.kind === 'thought')
     return (
       <li className="trail-row is-thought">
         <span className="trail-icon">
           <Sparkles size={14} />
         </span>
-        <div>
-          <p className="trail-label">{event.label}</p>
-          {event.detail && <p className="trail-detail">{event.detail}</p>}
-        </div>
+        <p className="trail-label">{event.label}</p>
       </li>
     );
 
@@ -92,7 +188,6 @@ function TrailRow({ event }: { event: ResearchEvent }) {
             {event.verdict === 'running' ? 'Searching…' : event.detail}
           </p>
         </div>
-        <Verdict verdict={event.verdict} />
       </li>
     );
 
@@ -113,7 +208,15 @@ function TrailRow({ event }: { event: ResearchEvent }) {
   return (
     <li className={`trail-row is-${event.kind}${rejected ? ' is-rejected' : ''}`}>
       <span className="trail-icon">
-        {event.kind === 'confirm' ? <Check size={14} /> : rejected ? <X size={14} /> : <ExternalLink size={14} />}
+        {event.kind === 'confirm' ? (
+          <Check size={14} />
+        ) : rejected ? (
+          <X size={14} />
+        ) : event.verdict === 'running' ? (
+          <LoaderCircle size={14} className="spin" />
+        ) : (
+          <ExternalLink size={14} />
+        )}
       </span>
       <div>
         <p className="trail-label">
@@ -121,23 +224,53 @@ function TrailRow({ event }: { event: ResearchEvent }) {
           {event.label}
         </p>
         <p className="trail-detail">
-          {event.host && <span className="trail-host">{event.url ? hostOf(event.url) : event.host}</span>}
+          {event.host && (
+            <span className="trail-host">{event.url ? hostOf(event.url) : event.host}</span>
+          )}
           {event.verdict === 'running' ? 'Reading…' : event.detail}
         </p>
       </div>
-      <Verdict verdict={event.verdict} />
     </li>
   );
 }
 
-function Verdict({ verdict }: { verdict?: ResearchEvent['verdict'] }) {
-  if (verdict === 'running')
-    return <LoaderCircle size={14} className="spin trail-verdict" aria-label="In progress" />;
-  if (verdict === 'accepted')
-    return <Check size={14} className="trail-verdict is-ok" aria-label="Used" />;
-  if (verdict === 'rejected')
-    return <X size={14} className="trail-verdict is-no" aria-label="Turned down" />;
-  if (verdict === 'failed')
-    return <X size={14} className="trail-verdict is-no" aria-label="Failed" />;
-  return null;
+type Group = { id: string; label: string; rows: ResearchEvent[] };
+type Tally = { searches: number; considered: number; rejected: number; confirmed: number; reads: number };
+
+/** Phase markers are section breaks, not entries; everything after one belongs to it. */
+function groupIntoStages(events: ResearchEvent[]): Group[] {
+  const groups: Group[] = [];
+  for (const event of events) {
+    if (event.kind === 'phase') {
+      groups.push({ id: event._id, label: event.label, rows: [] });
+      continue;
+    }
+    if (!groups.length) groups.push({ id: 'opening', label: 'Reading your project', rows: [] });
+    groups[groups.length - 1].rows.push(event);
+  }
+  return groups;
+}
+
+function describe(group: Group): string {
+  const searches = group.rows.filter((event) => event.kind === 'search').length;
+  const pages = group.rows.filter(
+    (event) => event.kind === 'candidate' || event.kind === 'read',
+  ).length;
+  const confirmed = group.rows.filter((event) => event.kind === 'confirm').length;
+  const parts = [
+    searches && `${searches} ${searches === 1 ? 'search' : 'searches'}`,
+    pages && `${pages} ${pages === 1 ? 'page' : 'pages'}`,
+    confirmed && `${confirmed} confirmed`,
+  ].filter(Boolean);
+  return parts.join(' · ');
+}
+
+function summarize(events: ResearchEvent[]): Tally {
+  return {
+    searches: events.filter((event) => event.kind === 'search').length,
+    considered: events.filter((event) => event.kind === 'candidate' || event.kind === 'read').length,
+    rejected: events.filter((event) => event.verdict === 'rejected').length,
+    confirmed: events.filter((event) => event.kind === 'confirm').length,
+    reads: events.filter((event) => event.kind === 'read' && event.verdict === 'accepted').length,
+  };
 }

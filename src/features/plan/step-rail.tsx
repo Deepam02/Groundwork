@@ -95,7 +95,7 @@ export function StepRail({
 
       {unsure.length > 0 && (
         <div className="rail-group">
-          <h2>Needs checking</h2>
+          <h2>Check the detail yourself</h2>
           <ol className="rail-steps">
             {unsure.map((row) => (
               <li key={row._id}>

@@ -10,8 +10,8 @@
   font-weight: 400;
   --ink: #24362d;
   /* Raised from #6b756e, which sat at about 4.3:1 on this background. */
-  --muted: #515c52;
-  --faint: #6f7a70;
+  --muted: #4b564c;
+  --faint: #626d63;
   --green: #285c42;
   --green-soft: #eef3e7;
   --green-line: #d5e2c7;
@@ -3520,25 +3520,161 @@ summary:focus-visible {
   color: var(--faint);
   padding: 8px 0;
 }
-.trail-phase {
+/* A run makes hundreds of decisions; the shape below keeps the finished ones
+   to one line each so the stage in progress stays on screen. */
+.trail-meter {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 1px;
+  margin: 22px 0 26px;
+  padding: 0;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  overflow: hidden;
+}
+.trail-meter > div {
+  background: var(--surface);
+  padding: 11px 14px 12px;
+}
+.trail-meter dt {
+  font-size: var(--step--1);
+  color: var(--faint);
+}
+.trail-meter dd {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin: 26px 0 12px;
-  font-size: var(--step--1);
-  font-weight: 650;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-  color: var(--muted);
+  gap: 7px;
+  margin: 2px 0 0;
+  font-size: var(--step-2);
+  line-height: 1.2;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
 }
-.trail-phase::after {
-  content: '';
+.trail-meter .is-lead dd {
+  color: var(--green);
+}
+.trail-meter .is-lead dd svg {
+  color: var(--faint);
+}
+.trail-stages {
+  display: grid;
+  gap: 8px;
+}
+.trail-stage {
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--surface);
+  overflow: hidden;
+}
+.trail-stage.is-live {
+  border-color: var(--green-line);
+  box-shadow: 0 1px 3px #24362d12;
+}
+.trail-stage-head {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  width: 100%;
+  text-align: left;
+  padding: 13px 15px;
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.trail-stage-head:hover {
+  background: var(--sunk);
+}
+.trail-stage-mark {
+  flex-shrink: 0;
+  width: 23px;
+  height: 23px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--green-soft);
+  color: var(--green);
+}
+.trail-stage-title {
   flex: 1;
-  height: 1px;
-  background: var(--line);
+  min-width: 0;
+  font-size: var(--step-0);
+  font-weight: 600;
+  color: var(--ink);
 }
-.trail-phase:first-child {
-  margin-top: 0;
+.trail-stage-tally {
+  font-size: var(--step--1);
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.trail-chevron {
+  flex-shrink: 0;
+  color: var(--faint);
+  transition: transform 0.16s ease;
+}
+.trail-stage.is-open .trail-chevron {
+  transform: rotate(90deg);
+}
+.trail-stage-body {
+  padding: 2px 12px 14px;
+  border-top: 1px solid var(--line-soft);
+}
+.trail-turned {
+  margin-top: 6px;
+  border-top: 1px dashed var(--line);
+  padding-top: 8px;
+}
+.trail-turned summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border-radius: 7px;
+  font-size: var(--step--1);
+  color: var(--muted);
+  cursor: pointer;
+  list-style: none;
+}
+.trail-turned summary::-webkit-details-marker {
+  display: none;
+}
+.trail-turned summary:hover {
+  background: var(--sunk);
+  color: var(--ink);
+}
+.trail-done {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  width: 100%;
+  text-align: left;
+  margin-top: 22px;
+  padding: 16px 18px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--green);
+  color: #f6faf2;
+  cursor: pointer;
+}
+.trail-done:hover {
+  background: #2f4a33;
+}
+.trail-done span {
+  flex: 1;
+  min-width: 0;
+}
+.trail-done strong {
+  display: block;
+  font-size: var(--step-1);
+  font-weight: 600;
+}
+.trail-done small {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--step--1);
+  color: #cfe0c4;
 }
 .trail-row {
   display: flex;
@@ -3628,25 +3764,6 @@ summary:focus-visible {
   padding: 5px 9px;
   overflow-wrap: anywhere;
 }
-.trail-verdict {
-  margin-top: 4px;
-  color: var(--faint);
-}
-.trail-verdict.is-ok {
-  color: #5c8a45;
-}
-.trail-verdict.is-no {
-  color: var(--rose);
-}
-.trail-foot {
-  display: flex;
-  align-items: center;
-  gap: 9px;
-  margin-top: 22px;
-  font-size: var(--step--1);
-  color: var(--faint);
-}
-
 /* ── Overview ── */
 .overview-next {
   display: flex;

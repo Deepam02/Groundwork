@@ -195,6 +195,16 @@ describe('official source admission', () => {
     expect(documentLinkLabel(portal.url, portal.title)).toBe('Open the application page');
     expect(documentLinkLabel(formPdf.url, formPdf.title)).toBe('Open the form (PDF)');
   });
+  it('turns away a firm that sells help with the filing, but never a government host', () => {
+    expect(rejectedHost('https://www.kotak.bank.in/company-registration-online.html')).toBe(true);
+    expect(rejectedHost('https://raagconsultants.co.in/mcd-trade-license')).toBe(true);
+    expect(rejectedHost('https://www.indiafilings.com/fssai-registration')).toBe(true);
+    // The words appear in the path, not the host, on the authority's own site.
+    expect(rejectedHost('https://mcdonline.nic.in/services/legal/trade-licence')).toBe(false);
+    expect(rejectedHost('https://www.dublincity.ie/residential/fire-safety')).toBe(false);
+    // A regulator named for what it regulates is still the regulator.
+    expect(rejectedHost('https://www.centralbank.ie/regulation/authorisation')).toBe(false);
+  });
   it('searches for the step rather than pasting back a URL the model suggested', () => {
     const step = {
       title: 'Business insurance',

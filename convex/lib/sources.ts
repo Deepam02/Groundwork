@@ -58,11 +58,25 @@ function hostIs(host: string, domain: string) {
   return host === domain || host.endsWith(`.${domain}`);
 }
 
-/** Forums and publishers are leads, never the official page for a step. */
+/**
+ * Firms that sell help with a filing rank well for it and describe it fluently,
+ * so they read as authoritative. The business they are in is named in the host.
+ */
+const COMMERCIAL_TRADE =
+  /(consultan|advisor|associates|solicitor|lawyer|attorney|accountant|filings|taxguru|cleartax|vakil|registrationwala|corpseed|legalservice)/i;
+// A whole label, because a regulator is often named for what it regulates —
+// centralbank.ie is the authority, kotak.bank.in sells to you.
+const COMMERCIAL_LABEL = /(^|[.-])(bank|insurance|loans?|finserv|services?)([.-]|$)/i;
+
+/** Forums, publishers, and vendors are leads, never the official page for a step. */
 export function rejectedHost(url: string): boolean {
   const host = searchDomain(url);
   if (!host) return true;
-  return NON_AUTHORITY_HOSTS.some((domain) => hostIs(host, domain));
+  if (NON_AUTHORITY_HOSTS.some((domain) => hostIs(host, domain))) return true;
+  // A government host may legitimately carry these words in a path; only the
+  // hostname is judged, and a public-sector domain is never turned away.
+  if (/(^|\.)(gov|nic|gob|gouv|govt|admin)(\.|$)/i.test(host)) return false;
+  return COMMERCIAL_TRADE.test(host) || COMMERCIAL_LABEL.test(host);
 }
 
 export function isHomepage(url: string): boolean {
@@ -299,8 +313,12 @@ export function rankDocuments<T extends { url: string; title?: string; descripti
   candidates: T[],
   step?: { title: string; authority: string; query: string },
 ): T[] {
+  // Ranking, not gatekeeping. A government portal often lives at a path that
+  // looks like a landing page, and dropping it here would mean the officiality
+  // review never sees the one page that actually settles the step. Scoring
+  // pushes home pages and blogs down; `pickOfficial` makes the real call.
   return candidates
-    .filter((candidate) => isActionablePage(candidate.url, candidate.title ?? ''))
+    .filter((candidate) => !rejectedHost(candidate.url))
     .map((candidate) => ({
       candidate,
       score: documentScore(candidate) + (step ? tokenHits(step, candidate) * 10 : 0),
