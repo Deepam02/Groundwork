@@ -3,6 +3,7 @@ import { useMutation } from 'convex/react';
 import { ExternalLink, BookOpen, FileText, CircleHelp, Mail, Check } from 'lucide-react';
 import { api } from '../../../convex/_generated/api';
 import { Modal } from '../../components/ui/dialog';
+import { citedAction, documentLinkLabel } from '../../../convex/lib/domain';
 import { errorMessage } from '../../lib/utils';
 import { type Requirement, progressLabels } from './types';
 
@@ -40,7 +41,7 @@ export function EvidenceDrawer({ row, onClose }: { row: Requirement | null; onCl
           </section>
           <section className="next-action-box">
             <span className="eyebrow">YOUR NEXT STEP</span>
-            <p>{row.nextAction}</p>
+            <p>{citedAction(row.nextAction, row.evidence)}</p>
           </section>
           <label className="progress-control" htmlFor="requirement-progress">
             Your progress
@@ -126,7 +127,8 @@ export function EvidenceDrawer({ row, onClose }: { row: Requirement | null; onCl
                   <span className="evidence-field">{source.field.replaceAll('_', ' ')}</span>
                   <blockquote>“{source.excerpt}”</blockquote>
                   <a href={source.url} target="_blank" rel="noopener noreferrer">
-                    Read the source <ExternalLink size={13} />
+                    {documentLinkLabel(source.url)} <ExternalLink size={13} />
+                    <span className="evidence-url">{source.url}</span>
                   </a>
                 </article>
               ))
@@ -134,8 +136,7 @@ export function EvidenceDrawer({ row, onClose }: { row: Requirement | null; onCl
               <div className="uncertain-note">
                 <CircleHelp size={18} />
                 <p>
-                  We haven’t confirmed this step from official guidance yet. Check with the relevant
-                  authority before relying on it.
+                  No application form, notification, or circular is attached to this step yet.
                 </p>
               </div>
             )}

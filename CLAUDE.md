@@ -82,7 +82,7 @@ Key invariants to preserve when editing backend code:
   bail out or throw when `project.revision !== args.revision`. This is how a superseded run stops
   writing. New steps must carry and check the revision.
 - **Budget reservation.** `research.reserve` increments per-run counters *before* the provider call
-  and enforces caps (12 searches / 12 scrapes / 8 model calls; 2/2/2 for mail-triggered runs) plus a
+  and enforces caps (16 searches / 14 scrapes / 8 model calls; 2/2/2 for mail-triggered runs) plus a
   48,000-token gate, then returns a rate-limiter wait the workflow sleeps for. Never call a provider
   without reserving.
 - **Evidence validation.** `lib/domain.ts:validateEvidence` is the trust boundary for model output:

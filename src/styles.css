@@ -1407,6 +1407,20 @@ summary:focus-visible {
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
+.row-document {
+  display: inline-block;
+  margin-top: 6px;
+  color: #2f4a32;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.evidence-url {
+  display: block;
+  margin-top: 4px;
+  word-break: break-all;
+  text-decoration: none;
+  color: #58684f;
+}
 .source-list a:hover {
   text-decoration: underline;
 }

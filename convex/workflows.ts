@@ -4,9 +4,12 @@ import { workflow } from './lib/workflow';
 import {
   officialPages,
   guidePages,
-  authorityQueries,
   isBudgetError,
   nextInvestigationPhase,
+  documentQuery,
+  candidatesForStep,
+  bestDocument,
+  isSpecificDocument,
 } from './lib/domain';
 import type { Infer } from 'convex/values';
 import { leadStep, question, type candidate } from './lib/validators';
@@ -205,87 +208,82 @@ export const researchFlow = workflow
       }
 
       const current = await step.runQuery(internal.research.context, args);
-      const pending = current.requirements.filter(
-        (row) => row.applicability === 'checking' && row.leadQuery,
-      );
-      const groups = authorityQueries(
-        pending.flatMap((row) =>
-          row.leadQuery
-            ? [{ key: row.key, authority: row.authority, query: row.leadQuery }]
-            : [],
-        ),
-      );
-      let pool: Infer<typeof candidate>[] = [];
-      for (const group of groups) {
+      const pending = current.requirements.filter((row) => {
+        if (row.evidence.some((item) => isSpecificDocument(item.url))) return false;
+        if (row.applicability === 'checking' || row.applicability === 'needs_verification')
+          return true;
+        return (
+          row.applicability === 'required' && row.progress === 'not_started' && row.tasks.length === 0
+        );
+      });
+      for (const row of pending) {
         await step.runMutation(internal.research.setStage, {
           ...args,
-          stage: `Checking ${group.authority}`,
+          stage: `Finding the form for ${row.title}`,
           state,
         });
-        const found = await runSearch(group.query, 'official');
+        const query = documentQuery(
+          { title: row.title, authority: row.authority, query: row.leadQuery ?? '' },
+          current.project.location,
+        );
+        const found = await runSearch(query, 'official');
         if (found.budget) break;
-        pool.push(...found.hits);
-      }
-      pool = [...new Map(pool.map((hit) => [hit.url, hit])).values()].slice(0, 40);
-      let picks: { key: string; url: string; title: string; authority: string }[] = [];
-      if (pool.length && pending.length) {
-        try {
-          picks = await step.runAction(internal.inference.pickOfficial, {
-            ...args,
-            steps: pending.flatMap((row) =>
-              row.leadQuery
-                ? [
-                    {
-                      key: row.key,
-                      title: row.title,
-                      authority: row.authority,
-                      kind: row.kind,
-                      reason: row.reason,
-                      query: row.leadQuery,
-                    },
-                  ]
-                : [],
+        let choice = bestDocument(
+          candidatesForStep(
+            { title: row.title, authority: row.authority, query: row.leadQuery ?? '' },
+            found.hits,
+          ),
+          { title: row.title, authority: row.authority, query: row.leadQuery ?? '' },
+        );
+        if (!choice || !isSpecificDocument(choice.url, choice.title)) {
+          const again = await runSearch(
+            `${row.authority} ${row.title} ${current.project.location} filetype:pdf notification circular application form`.slice(
+              0,
+              300,
             ),
-            candidates: pool,
-          });
-        } catch (error) {
-          if (!isBudgetError(error)) throw error;
+            'official',
+          );
+          if (again.budget) break;
+          const retry = bestDocument(
+            candidatesForStep(
+              { title: row.title, authority: row.authority, query: row.title },
+              again.hits,
+            ),
+            { title: row.title, authority: row.authority, query: row.leadQuery ?? row.title },
+          );
+          if (retry && isSpecificDocument(retry.url, retry.title)) choice = retry;
         }
-      }
-      const scraped = new Set<string>();
-      for (const pick of picks) {
+        if (!choice || !isSpecificDocument(choice.url, choice.title)) continue;
         await step.runMutation(internal.research.setStage, {
           ...args,
-          stage: `Reading ${pick.authority}`,
+          stage: `Reading ${choice.title}`,
           state,
         });
-        if (!scraped.has(pick.url)) {
-          const wait = await reserve('scrapes');
-          if (wait === null) break;
-          if (wait) await step.sleep(wait);
-          const source = await step.runAction(internal.inference.scrape, {
+        const wait = await reserve('scrapes');
+        if (wait === null) break;
+        if (wait) await step.sleep(wait);
+        const source = await step.runAction(internal.inference.scrape, {
+          ...args,
+          page: {
+            url: choice.url,
+            title: choice.title,
+            authority: row.authority,
+            official: true,
+          },
+        });
+        if (source)
+          await step.runMutation(internal.research.saveSource, {
             ...args,
-            page: {
-              url: pick.url,
-              title: pick.title,
-              authority: pick.authority,
-              official: true,
-            },
+            source: { ...source, official: true },
           });
-          if (source)
-            await step.runMutation(internal.research.saveSource, {
-              ...args,
-              source: { ...source, official: true },
-            });
-          scraped.add(pick.url);
-        }
         await step.runMutation(internal.research.confirmLead, {
           ...args,
-          key: pick.key,
-          url: pick.url,
+          key: row.key,
+          url: choice.url,
         });
       }
       await finish(true);
+      await step.runMutation(internal.research.retireUnchecked, args);
     } catch {
       await step.runMutation(internal.research.fail, {
         ...args,

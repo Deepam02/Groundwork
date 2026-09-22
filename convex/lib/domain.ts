@@ -146,22 +146,16 @@ export function officialChoices<T extends { url: string; official: boolean }>(
   );
 }
 
-/** Steps that name the same authority share one official search. */
+/** Each form keeps its own query. Two different permits from one office are not one search. */
 export function shareAuthorityQueries<T extends { authority: string; query: string }>(
   steps: T[],
 ): T[] {
-  const canonical = new Map<string, string>();
-  return steps.map((step) => {
-    const authority = step.authority.trim().toLowerCase();
-    const query = canonical.get(authority) ?? step.query.trim();
-    if (!canonical.has(authority)) canonical.set(authority, query);
-    return { ...step, query };
-  });
+  return steps.map((step) => ({ ...step, query: step.query.trim() }));
 }
 
 export function authorityQueries<T extends { key: string; authority: string; query: string }>(
   steps: T[],
-  limit = 6,
+  limit = 8,
 ): { query: string; authority: string; keys: string[] }[] {
   const groups = new Map<string, { query: string; authority: string; keys: string[] }>();
   for (const step of steps) {
@@ -190,6 +184,128 @@ export function supportingSentence(text: string, hints: string[]): string | null
     sentences[0] ??
     null
   );
+}
+
+export function isHomepage(url: string): boolean {
+  try {
+    const path = new URL(url).pathname.replace(/\/+$/, '').toLowerCase();
+    return path === '' || path === '/index.html' || path === '/home' || path === '/en';
+  } catch {
+    return true;
+  }
+}
+
+/** A citation has to be the form, the filing page, or the notification — not the department home page. */
+export function isSpecificDocument(url: string, title = ''): boolean {
+  if (rejectedHost(url) || isHomepage(url)) return false;
+  const blob = `${url} ${title}`.toLowerCase();
+  if (/\/blog\/|\/news\/|\/article\//.test(blob)) return false;
+  return /form|notification|circular|gazette|application|annexure|\.pdf|apply|filing/.test(blob);
+}
+
+export function documentQuery(
+  step: { title: string; authority: string; query: string },
+  place: string,
+): string {
+  const base = (step.query.trim() || `${step.authority} ${step.title}`).replace(/\s+/g, ' ');
+  const located =
+    place.trim() && !base.toLowerCase().includes(place.trim().toLowerCase())
+      ? `${base} ${place.trim()}`
+      : base;
+  if (/form|notification|circular|gazette|\.pdf|application/.test(located.toLowerCase()))
+    return located.slice(0, 300);
+  return `${located} application form notification circular pdf`.replace(/\s+/g, ' ').slice(0, 300);
+}
+
+function documentScore(candidate: { url: string; title?: string; description?: string }): number {
+  if (rejectedHost(candidate.url)) return -100;
+  const blob = `${candidate.url} ${candidate.title ?? ''} ${candidate.description ?? ''}`;
+  let score = 0;
+  if (isHomepage(candidate.url)) score -= 30;
+  if (/\/blog\/|\/news\/|\/article\//i.test(blob)) score -= 20;
+  if (/\.pdf/i.test(blob)) score += 12;
+  if (/notification|circular|gazette/i.test(blob)) score += 8;
+  if (/form|application|apply|filing|annexure/i.test(blob)) score += 8;
+  if (isSpecificDocument(candidate.url, candidate.title ?? '')) score += 4;
+  return score;
+}
+
+const genericDocumentWords = new Set([
+  'form',
+  'forms',
+  'application',
+  'applications',
+  'notification',
+  'notifications',
+  'circular',
+  'circulars',
+  'gazette',
+  'apply',
+  'filing',
+  'official',
+  'with',
+  'from',
+  'that',
+  'this',
+  'your',
+  'have',
+  'need',
+  'needs',
+]);
+
+function documentTokens(step: { title: string; authority: string; query: string }): string[] {
+  return `${step.authority} ${step.title} ${step.query}`
+    .toLowerCase()
+    .split(/\W+/)
+    .filter((token) => token.length > 3 && !genericDocumentWords.has(token));
+}
+
+function tokenHits(
+  step: { title: string; authority: string; query: string },
+  candidate: { url: string; title?: string; description?: string },
+): number {
+  const blob =
+    `${candidate.url} ${candidate.title ?? ''} ${candidate.description ?? ''}`.toLowerCase();
+  return documentTokens(step).filter((token) => blob.includes(token)).length;
+}
+
+export function candidatesForStep<
+  T extends { url: string; title?: string; description?: string },
+>(step: { title: string; authority: string; query: string }, candidates: T[]): T[] {
+  return candidates.filter((candidate) => tokenHits(step, candidate) > 0);
+}
+
+/** Prefer the form, PDF, or circular that actually names this step. */
+export function bestDocument<T extends { url: string; title?: string; description?: string }>(
+  candidates: T[],
+  step?: { title: string; authority: string; query: string },
+): T | null {
+  const ranked = candidates
+    .filter((candidate) => isSpecificDocument(candidate.url, candidate.title ?? ''))
+    .map((candidate) => ({
+      candidate,
+      score: documentScore(candidate) + (step ? tokenHits(step, candidate) * 10 : 0),
+    }))
+    .sort((a, b) => b.score - a.score);
+  return ranked[0]?.candidate ?? null;
+}
+
+export function documentLinkLabel(url: string): string {
+  const blob = url.toLowerCase();
+  if (isHomepage(url)) return 'Department home, not the form';
+  if (blob.includes('.pdf') && /notification|circular|gazette/.test(blob))
+    return 'Open the notification';
+  if (blob.includes('.pdf')) return 'Open the PDF';
+  if (/form|application|apply|filing/.test(blob)) return 'Open the form';
+  if (/notification|circular|gazette/.test(blob)) return 'Open the notification';
+  return 'Open the official page';
+}
+
+export function citedAction(nextAction: string, evidence: { url: string }[]): string {
+  if (evidence.some((item) => isSpecificDocument(item.url))) return nextAction;
+  const url = evidence[0]?.url;
+  if (!url) return nextAction;
+  return `${documentLinkLabel(url)}. The application form, notification, or circular is still missing.`;
 }
 
 export function isBudgetError(error: unknown): boolean {

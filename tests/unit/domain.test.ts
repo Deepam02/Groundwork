@@ -16,10 +16,15 @@ import {
   supportingSentence,
   isBudgetError,
   nextInvestigationPhase,
+  bestDocument,
+  isHomepage,
+  isSpecificDocument,
+  documentQuery,
+  candidatesForStep,
 } from '../../convex/lib/domain';
 import { verifySignature } from '../../convex/integrations/agentmail';
 import { requirement } from './fixtures';
-import { fixtureResearch } from '../../convex/integrations/fixtures';
+import { fixtureResearch, fixtureProcedure, fixtureSources } from '../../convex/integrations/fixtures';
 
 describe('official source admission', () => {
   const candidates = [
@@ -55,18 +60,55 @@ describe('official source admission', () => {
       'https://local-guide.example.com/cafe-permits',
     ]);
   });
-  it('groups official searches by authority and resumes after the map', () => {
+  it('keeps a separate search for each form and prefers the PDF over the home page', () => {
     expect(
       shareAuthorityQueries([
-        { authority: 'Planning office', query: 'first query' },
-        { authority: 'Planning Office', query: 'second query' },
+        { authority: 'Municipal corporation', query: 'trade licence application form' },
+        { authority: 'Municipal corporation', query: 'health certificate notification pdf' },
       ]).map((step) => step.query),
-    ).toEqual(['first query', 'first query']);
-    expect(authorityQueries(Array.from({ length: 8 }, (_, i) => ({
-      key: `step-${i}`,
-      authority: `Office ${i}`,
-      query: `query ${i}`,
-    }))).length).toBe(6);
+    ).toEqual(['trade licence application form', 'health certificate notification pdf']);
+    expect(
+      authorityQueries(
+        Array.from({ length: 8 }, (_, i) => ({
+          key: `step-${i}`,
+          authority: `Office ${i}`,
+          query: `query ${i}`,
+        })),
+        6,
+      ),
+    ).toHaveLength(6);
+    const home = {
+      url: 'https://www.fssai.gov.in/',
+      title: 'FSSAI',
+      description: 'Food safety home',
+    };
+    const form = {
+      url: 'https://foscos.fssai.gov.in/apply-for-foSCoS-license.pdf',
+      title: 'FSSAI licence application form',
+      description: 'Apply for the food safety licence',
+    };
+    expect(bestDocument([home, form])?.url).toBe(form.url);
+    expect(
+      bestDocument(
+        [form, { url: 'https://dfs.delhi.gov.in/fire-safety-notification.pdf', title: 'Fire' }],
+        { title: 'FSSAI licence', authority: 'Food Safety and Standards Authority', query: 'foscos' },
+      )?.url,
+    ).toBe(form.url);
+    expect(isHomepage(home.url)).toBe(true);
+    expect(isSpecificDocument(form.url, form.title)).toBe(true);
+    expect(isSpecificDocument('https://example.com/blog/how-to-apply', 'How to apply')).toBe(false);
+    expect(
+      documentQuery(
+        { title: 'Trade licence', authority: 'SDMC', query: 'SDMC trade licence' },
+        'South Delhi',
+      ),
+    ).toContain('application form');
+    expect(
+      candidatesForStep(
+        { title: 'Fire clearance', authority: 'Delhi Fire Services', query: 'fire' },
+        [form, { url: 'https://dfs.delhi.gov.in/fire-safety-notification.pdf', title: 'Fire' }],
+      ).map((item) => item.url),
+    ).toEqual(['https://dfs.delhi.gov.in/fire-safety-notification.pdf']);
     expect(
       nextInvestigationPhase({
         location: 'Dublin',
@@ -99,6 +141,18 @@ describe('official source admission', () => {
         'planning office',
       ]),
     ).toBe('The planning office requires a review before work.');
+  });
+  it('matches each fixture step to its own application form', () => {
+    const hits = fixtureSources.map((source) => ({
+      url: source.url,
+      title: source.title,
+      description: source.text,
+    }));
+    for (const step of fixtureProcedure('').steps) {
+      expect(bestDocument(candidatesForStep(step, hits), step)?.url).toContain(
+        step.key === 'outdoor' ? 'outdoor' : step.key,
+      );
+    }
   });
   it('drops unofficial pages before the scrape loop instead of padding the set', () => {
     const pages = [

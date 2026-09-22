@@ -20,7 +20,7 @@ import {
 } from 'lucide-react';
 import type { Id } from '../../../convex/_generated/dataModel';
 import { api } from '../../../convex/_generated/api';
-import { orderRequirements } from '../../../convex/lib/domain';
+import { orderRequirements, citedAction, documentLinkLabel, isSpecificDocument } from '../../../convex/lib/domain';
 import { Button } from '../../components/ui/button';
 import { cn, errorMessage } from '../../lib/utils';
 import { QuestionCard } from '../research/question-card';
@@ -215,7 +215,12 @@ function Plan({
   running: boolean;
   stage: string;
 }) {
-  const rows = orderRequirements(data.requirements).ordered;
+  const settled = !running && data.project.state !== 'needs_answer';
+  const rows = orderRequirements(data.requirements).ordered.filter((row) => {
+    if (!settled) return true;
+    if (row.applicability === 'required' || row.applicability === 'not_applicable') return true;
+    return row.evidence.some((item) => isSpecificDocument(item.url));
+  });
   const required = rows.filter((r) => r.applicability === 'required');
   const groups = [
     {
@@ -229,8 +234,10 @@ function Plan({
       rows: required.filter((r) => r.prerequisites.length),
     },
     {
-      label: 'A little more checking',
-      note: 'We’ll keep the unknowns visible.',
+      label: running ? 'Checking the forms' : 'Still to confirm',
+      note: running
+        ? 'Each of these still needs its application form, notification, or PDF.'
+        : 'A source is open, and one fact is still undecided.',
       rows: rows.filter(
         (r) => r.applicability === 'needs_verification' || r.applicability === 'checking',
       ),
@@ -256,7 +263,7 @@ function Plan({
             <div>
               <span className="eyebrow">YOUR NEXT GOOD MOVE</span>
               <h3>{next.title}</h3>
-              <p>{next.nextAction}</p>
+              <p>{citedAction(next.nextAction, next.evidence)}</p>
             </div>
             <ArrowUpRight size={19} />
           </button>
@@ -304,7 +311,7 @@ function Plan({
               ))}
           </details>
         )}
-        {!rows.length && (
+        {(running ? !rows.length : !required.length) && (
           <div className="empty-plan">
             <div className="empty-plan-lines">
               <span />
@@ -313,8 +320,8 @@ function Plan({
             </div>
             <p>
               {running
-                ? stage || 'Reading local accounts of this process.'
-                : 'Nothing has been confirmed yet.'}
+                ? stage || 'Looking for the application form or notification.'
+                : 'The checklist only lists a step once its form, notification, or PDF is found. What’s still missing is beside the plan.'}
             </p>
           </div>
         )}
@@ -385,9 +392,9 @@ function Plan({
                 <a key={source._id} href={source.url} target="_blank" rel="noopener noreferrer">
                   <span>
                     <span className="source-kind">
-                      {source.official ? 'Official page' : 'Local account'}
+                      {source.official ? documentLinkLabel(source.url) : 'Local account'}
                     </span>
-                    {source.authority || source.title}
+                    {source.title}
                   </span>
                   <ArrowUpRight size={13} />
                 </a>
@@ -445,7 +452,7 @@ function RequirementRow({
       <div className="requirement-copy">
         <span className="requirement-authority">{row.authority}</span>
         <h4>{row.title}</h4>
-        <p>{row.nextAction}</p>
+        <p>{citedAction(row.nextAction, row.evidence)}</p>
         {row.tasks.length > 0 && (
           <small className="task-preview">
             <Mail size={12} />

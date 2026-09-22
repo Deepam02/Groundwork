@@ -123,7 +123,7 @@ describe('durable research boundaries', () => {
   });
   it('stops at the search cap and leaves existing rows in place', async () => {
     await t.run((ctx) => ctx.db.patch(project, { fixture: true }));
-    for (let i = 0; i < 12; i++)
+    for (let i = 0; i < 16; i++)
       await t.mutation(internal.research.reserve, { runId: run, revision: 2, kind: 'searches' });
     await expect(
       t.mutation(internal.research.reserve, { runId: run, revision: 2, kind: 'searches' }),
@@ -214,8 +214,42 @@ describe('durable research boundaries', () => {
         .withIndex('by_projectId_and_key', (q) => q.eq('projectId', project).eq('key', 'fire'))
         .unique(),
     );
-    expect(fire?.applicability).toBe('needs_verification');
+    expect(fire?.applicability).toBe('checking');
     expect(fire?.evidence).toEqual([]);
+  });
+  it('retires an unchecked step that has no form and keeps a step already in progress', async () => {
+    await t.mutation(internal.research.publishLeads, {
+      runId: run,
+      revision: 2,
+      question: null,
+      steps: [
+        {
+          key: 'fire',
+          title: 'Fire safety review',
+          authority: 'Fire department',
+          kind: 'Inspection',
+          reason: 'A neighbour had to book this before opening.',
+          query: 'Fire department fire safety review Example',
+        },
+      ],
+    });
+    await t.run(async (ctx) => {
+      const kept = await ctx.db.get(row);
+      if (!kept) throw new Error('missing row');
+      await ctx.db.patch(row, { applicability: 'needs_verification', evidence: [] });
+    });
+    await t.mutation(internal.research.retireUnchecked, { runId: run, revision: 2 });
+    const remaining = await t.run(async (ctx) =>
+      ctx.db
+        .query('requirements')
+        .withIndex('by_projectId', (q) => q.eq('projectId', project))
+        .take(10),
+    );
+    expect(remaining.map((item) => item.key).sort()).toEqual(['planning']);
+    expect((await t.run((ctx) => ctx.db.get(project)))?.gaps.join(' ')).toContain(
+      'Fire safety review',
+    );
+    expect((await t.run((ctx) => ctx.db.get(row)))?.applicability).toBe('needs_verification');
   });
 });
 describe('one shared inbox', () => {

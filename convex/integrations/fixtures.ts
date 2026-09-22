@@ -34,28 +34,28 @@ export const fixtureGuides: SourceInput[] = [
 ];
 export const fixtureSources: SourceInput[] = [
   {
-    url: 'https://example.org/groundwork-fixture/planning',
+    url: 'https://example.org/groundwork-fixture/planning-application-form',
     title: 'Planning your change of use',
     authority: 'Sample Planning Office',
     official: true,
     text: 'SYNTHETIC DEVELOPMENT FIXTURE. A change in the use of premises requires a planning review before work begins. Submit a floor plan and a description of the intended use. Confirm existing use with the planning office before requesting an inspection.',
   },
   {
-    url: 'https://example.org/groundwork-fixture/registration',
+    url: 'https://example.org/groundwork-fixture/registration-application-form',
     title: 'Registering a new local business',
     authority: 'Sample Business Registry',
     official: true,
     text: 'SYNTHETIC DEVELOPMENT FIXTURE. Register a new business before opening to the public. Provide the business name and the operating address.',
   },
   {
-    url: 'https://example.org/groundwork-fixture/safety',
+    url: 'https://example.org/groundwork-fixture/safety-application-form',
     title: 'Preparing for a premises inspection',
     authority: 'Sample Safety Office',
     official: true,
     text: 'SYNTHETIC DEVELOPMENT FIXTURE. Public-facing premises require a safety inspection before opening. Provide Form B and an electrical safety certificate. Confirm existing use with the planning office before requesting an inspection.',
   },
   {
-    url: 'https://example.org/groundwork-fixture/outdoor',
+    url: 'https://example.org/groundwork-fixture/outdoor-application-form',
     title: 'Using the public footpath',
     authority: 'Sample Public Realm Office',
     official: true,

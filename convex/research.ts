@@ -11,6 +11,8 @@ import {
   latestByKey,
   shareAuthorityQueries,
   supportingSentence,
+  isSpecificDocument,
+  documentLinkLabel,
 } from './lib/domain';
 import { startRun } from './lib/runs';
 import { workflow } from './lib/workflow';
@@ -75,7 +77,7 @@ export const reserve = internalMutation({
       throw new Error('This research revision is no longer active.');
     const cap = run.trigger.startsWith('mail:')
       ? { searches: 2, scrapes: 2, modelCalls: 2 }
-      : { searches: 12, scrapes: 12, modelCalls: 8 };
+      : { searches: 16, scrapes: 14, modelCalls: 8 };
     if (run[args.kind] >= cap[args.kind] || run.tokens >= 48_000)
       throw new Error('Research budget reached. Existing findings are saved.');
     await ctx.db.patch(run._id, { [args.kind]: run[args.kind] + 1 });
@@ -197,7 +199,7 @@ export const publishLeads = internalMutation({
         kind: step.kind.slice(0, 80) || 'Step',
         applicability: 'checking',
         reason: `Mentioned in a local account and not confirmed yet. ${step.reason}`.slice(0, 500),
-        nextAction: `Check ${step.authority} for the official page.`.slice(0, 300),
+        nextAction: `Looking for the ${step.title} form or notification.`.slice(0, 300),
         documents: [],
         fee: null,
         duration: null,
@@ -261,10 +263,10 @@ export const confirmLead = internalMutation({
       .query('sources')
       .withIndex('by_projectId_and_url', (q) => q.eq('projectId', project._id).eq('url', args.url))
       .unique();
-    if (!stored?.official) {
+    if (!stored?.official || !isSpecificDocument(stored.url, stored.title)) {
       await ctx.db.patch(requirement._id, {
-        applicability: 'needs_verification',
-        reason: 'The official page for this step could not be read. It still needs checking.',
+        applicability: 'checking',
+        reason: `${requirement.authority} does not have an application form or notification on this page yet.`,
         evidence: [],
         updatedAt: Date.now(),
       });
@@ -275,6 +277,7 @@ export const confirmLead = internalMutation({
       requirement.authority,
       requirement.kind,
     ]);
+    const link = documentLinkLabel(stored.url);
     const checked = validateEvidence(
       {
         key: requirement.key,
@@ -283,10 +286,10 @@ export const confirmLead = internalMutation({
         kind: requirement.kind,
         applicability: 'required',
         reason: excerpt
-          ? `An official page from ${stored.authority || requirement.authority} describes this step.`
+          ? `${link} from ${stored.authority || requirement.authority}.`
           : 'We found an official page, but not a passage that states this step.',
-        nextAction: requirement.nextAction,
-        documents: [],
+        nextAction: `${link}: ${stored.title}.`.slice(0, 300),
+        documents: stored.url.toLowerCase().includes('.pdf') ? [stored.title.slice(0, 200)] : [],
         fee: null,
         duration: null,
         prerequisites: requirement.prerequisites,
@@ -333,6 +336,51 @@ export const settle = internalMutation({
     return null;
   },
 });
+export const retireUnchecked = internalMutation({
+  args: { runId: v.id('researchRuns'), revision: v.number() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const run = await ctx.db.get(args.runId);
+    const project = run && (await ctx.db.get(run.projectId));
+    if (!run || !project || project.revision !== args.revision) return null;
+    const rows = await ctx.db
+      .query('requirements')
+      .withIndex('by_projectId', (q) => q.eq('projectId', project._id))
+      .take(60);
+    const gaps = [...project.gaps];
+    for (const row of rows) {
+      if (row.applicability === 'not_applicable') continue;
+      if (row.evidence.some((item) => isSpecificDocument(item.url))) continue;
+      if (row.progress !== 'not_started' || row.tasks.length > 0 || row.events.length > 0) continue;
+      const gap =
+        row.applicability === 'required'
+          ? `${row.title} (${row.authority}) still applies, but no application form, notification, or circular was found yet.`
+          : `No application form, notification, or circular found yet for ${row.title} (${row.authority}).`;
+      if (!gaps.includes(gap)) gaps.push(gap);
+      await ctx.db.delete(row._id);
+    }
+    const remaining = await ctx.db
+      .query('requirements')
+      .withIndex('by_projectId', (q) => q.eq('projectId', project._id))
+      .take(60);
+    const open = remaining.some(
+      (row) => row.applicability !== 'required' && row.applicability !== 'not_applicable',
+    );
+    const state = !remaining.length || open || gaps.length ? 'partial' : 'ready';
+    await ctx.db.patch(project._id, {
+      gaps: gaps.slice(-12),
+      state,
+      updatedAt: Date.now(),
+    });
+    await ctx.db.patch(run._id, {
+      state,
+      stage: remaining.some((row) => row.applicability === 'required')
+        ? 'Your findings are ready'
+        : 'No application form was found yet',
+    });
+    return null;
+  },
+});
 export const applyResult = internalMutation({
   args: {
     runId: v.id('researchRuns'),
@@ -360,12 +408,18 @@ export const applyResult = internalMutation({
     for (const row of rows) {
       if (cycle) row.prerequisites = [];
       const existing = existingRows.find((r) => r.key === row.key);
+      const keptDocument =
+        args.keepConfirmed &&
+        existing?.applicability === 'required' &&
+        existing.evidence.some((item) => isSpecificDocument(item.url)) &&
+        row.applicability === 'required' &&
+        !row.evidence.some((item) => isSpecificDocument(item.url));
       const keep =
         args.keepConfirmed &&
         existing?.applicability === 'required' &&
         existing.evidence.length > 0 &&
         row.applicability === 'needs_verification';
-      if (keep && existing) {
+      if ((keep || keptDocument) && existing) {
         if (row.prerequisites.length)
           await ctx.db.patch(existing._id, {
             prerequisites: row.prerequisites,

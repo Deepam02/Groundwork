@@ -12,7 +12,7 @@
 - **Auth:** Convex Auth
 - **AI models:** gpt-4.1-mini (configured through the direct OpenAI API; live inference pending credentials)
 - **Started:** 2026-09-13T07:47:38Z
-- **Last updated:** 2026-09-22T12:32:06Z
+- **Last updated:** 2026-09-22T13:13:07Z
 
 ## Log
 
@@ -68,3 +68,7 @@ Live behavior is still unverified: no research run, mail delivery, or account cr
 ### 2026-09-22 - working tree
 Replaced the government-first discovery pass with a staged investigation. A run asks for a missing city or activity before any search, reads local accounts to name the steps, publishes those steps immediately as checking, asks one branching question, then confirms each authority on an official page. Local accounts are leads: a step is confirmed only when an excerpt appears in an official source. Initial-run caps are 12 searches, 12 scrapes, and 8 model calls; a mail follow-up stays at 2 of each. Hitting the search or scrape cap stops that loop and keeps the rows already saved (`convex/workflows.ts`, `convex/inference.ts`, `convex/research.ts`, `convex/lib/domain.ts`, `src/features/plan/workspace.tsx`).
 Verification is `npm run verify` on this checkout: TypeScript, ESLint, 31 deterministic tests, and the production build. Tests cover unofficial pages not confirming a step, checking rows published before an official source exists, resuming past a finished map, and the search cap leaving existing rows in place. This is not a live Firecrawl run.
+
+### 2026-09-22 - working tree
+A checklist step is now a specific filing document. Each lead is searched on its own for the application form, filing page, notification, circular, or PDF. A department homepage is not accepted as the citation. When that document is not found, a not-started step is removed from the finished checklist and recorded as a gap. The evidence link is labeled for the document and shows its URL. Initial-run caps are 16 searches, 14 scrapes, and 8 model calls; a mail follow-up stays at 2 of each (`convex/workflows.ts`, `convex/inference.ts`, `convex/research.ts`, `convex/lib/domain.ts`, `src/features/plan/workspace.tsx`, `src/features/plan/evidence-drawer.tsx`).
+Verification is `npm run verify` on this checkout: TypeScript, ESLint, 33 deterministic tests, and the production build. Tests cover PDF-over-homepage ranking, one form per fixture step, retiring a step with no document, and an unofficial page leaving a step unchecked. This is not a live Firecrawl run. The saved café plan on the production deployment is unchanged until this code is deployed and that project is researched again.
