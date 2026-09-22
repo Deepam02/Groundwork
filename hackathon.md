@@ -12,7 +12,7 @@
 - **Auth:** Convex Auth
 - **AI models:** gpt-4.1-mini (default in `convex/agent.ts`, overridable per deployment via `OPENAI_MODEL`; reached through the direct OpenAI API)
 - **Started:** 2026-09-13T07:47:38Z
-- **Last updated:** 2026-09-22T16:30:00Z
+- **Last updated:** 2026-09-22T17:00:00Z
 
 ## Log
 
@@ -83,3 +83,12 @@ Source ranking was inverted to prefer somewhere to apply over something to read.
 The confirm phase now gates on authority before anything is read: all search candidates go to one `pickOfficial` call, and only what survives is scraped. Scraped markdown is trimmed of site navigation before storage, so skip links and quick-link menus never reach the model or get quoted back as evidence. A step query that arrives as a bare URL falls back to the step's own words. Pacing went to a Firecrawl token bucket of 10/min with a burst of 5 and `maxParallelism: 3`, with per-step lookups batched through `Promise.all`; the provider budget is unchanged at 16 searches / 14 scrapes / 8 model calls (`convex/workflows.ts`, `convex/inference.ts`, `convex/lib/limits.ts`, `convex/lib/workflow.ts`).
 
 Verification is `npm run verify` on this checkout: TypeScript, ESLint, 37 deterministic tests, and the production build. Unlike earlier entries this was also exercised live against the dev deployment across three runs, which is how the officiality gate, the chrome trimming, the URL-as-query fallback, and a look-alike `.com` domain being accepted for a named public body were each found and fixed. Production still runs the previously deployed code; nothing here is live at https://steady-chipmunk-476.convex.site until it is deployed.
+
+### 2026-09-22 - 00df2eb
+Made a run end with a plan instead of a list of failures. A live South Delhi café run had confirmed 0 of 8 steps; the same prompt now confirms 5, with 5 official pages read. Three causes, all in code rather than the model. A pre-filter dropped candidates that did not look like forms before the officiality review ran, and Indian government portals sit at paths that read as landing pages, so the MCD, FSSAI, and Labour department pages never reached it. Ranking still pushes home pages down, but only blocklisted hosts are removed before review now (`convex/lib/sources.ts`, `convex/workflows.ts`).
+
+When the review picks an official page that then blocks the scraper, the step stays in the plan with that link and says the page is unread, instead of being dropped (`research.attachUnread`). `retireUnchecked` and the synthesis pass can no longer demote a step the confirm pass already settled (`convex/research.ts`). Hosts that name a filing or advisory trade are refused as authorities while government domains never are, so `kotak.bank.in` is refused and `centralbank.ie` is kept. Step queries that arrive as a URL or as the clarifying question fall back to the authority and step title.
+
+The research trail is now folding stages instead of a flat log. Finished stages collapse to one line with a tally, only the live stage is open, and turned-down pages sit behind one disclosure. A four-count meter (searches, pages weighed, turned down, confirmed) moves throughout the run, and a completion card leads into the plan. Muted text tokens were darkened for contrast (`src/features/plan/research-trail.tsx`, `src/styles.css`).
+
+Verification is `npm run verify`: TypeScript, ESLint, 39 deterministic tests, and the production build, plus three live runs against the dev deployment. Production is unchanged until deployed.
