@@ -215,6 +215,16 @@ describe('official source admission', () => {
     expect(query).not.toContain('https://');
     expect(query).toContain('Central Bank of Ireland');
     expect(query).toContain('Business insurance');
+    const asked = documentQuery(
+      {
+        title: 'Liquor licence',
+        authority: 'Delhi Excise Department',
+        query: 'Do you plan to serve alcoholic beverages at the cafe in South Delhi?',
+      },
+      'South Delhi, India',
+    );
+    expect(asked).not.toContain('Do you plan');
+    expect(asked).toContain('Delhi Excise Department Liquor licence');
   });
   it('reads a page by its own name and skips the navigation above its content', () => {
     expect(pageName('Apply for a Street Furniture Licence | Dublin City Council')).toBe(

@@ -243,9 +243,14 @@ export function documentQuery(
 ): string {
   // A model asked for a search sometimes hands back the URL it has in mind.
   // Pasted into a search box it reads as noise, so fall back to the step itself.
+  // A step that hinges on the clarifying question sometimes carries that
+  // question as its query, which searches for the question, not the permit.
   const asked = step.query.replace(/\b(?:https?:\/\/|www\.)\S+/gi, ' ').trim();
+  const question =
+    asked.includes('?') ||
+    /^(do|does|did|will|would|are|is|can|could|should|have|has|what|which|how|when|where)\b/i.test(asked);
   const base = (
-    asked.length >= 8 ? asked : `${step.authority} ${step.title}`
+    asked.length >= 8 && !question ? asked : `${step.authority} ${step.title}`
   ).replace(/\s+/g, ' ');
   const located =
     place.trim() && !base.toLowerCase().includes(place.trim().toLowerCase())
